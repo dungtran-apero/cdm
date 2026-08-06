@@ -67,14 +67,6 @@
       "default": false,
       "desc": "Flutter/Dart .dart_tool and Zig cache/output — rebuilt on next build.",
       "dirs": [".dart_tool", ".zig-cache", "zig-out"]
-    },
-    {
-      "kind": "gitignore",
-      "icon": "🙈",
-      "name": "Git-ignored files (all repos)",
-      "method": "trash",
-      "default": false,
-      "desc": "Everything 'git clean -ndX' would remove in each repo, minus .env* files (always left alone) — MAY include local config, so moved to Trash (recoverable)."
     }
   ]
 }
