@@ -1,26 +1,13 @@
-# CleanDevMac
+# cdm
 
-English | [العربية](README.ar.md) | [Español](README.es.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
+`cdm` is a terminal UI that deep-cleans your Mac: dev caches, build artifacts, leftover app data, device backups, dead simulators — and the large files you have not opened in months. It shows you exactly what and how big, and deletes only what you tick.
 
-[![Downloads](https://img.shields.io/github/downloads/cleandevmac/cdm/total?style=flat-square&label=downloads&color=1f6feb)](https://github.com/cleandevmac/cdm/releases)
-[![Latest release](https://img.shields.io/github/v/release/cleandevmac/cdm?style=flat-square&label=release&color=2da44e)](https://github.com/cleandevmac/cdm/releases/latest)
-[![Stars](https://img.shields.io/github/stars/cleandevmac/cdm?style=flat-square&label=stars&color=d29922)](https://github.com/cleandevmac/cdm/stargazers)
-[![License](https://img.shields.io/github/license/cleandevmac/cdm?style=flat-square&label=license&color=8957e5)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS-111111?style=flat-square)](https://github.com/cleandevmac/cdm)
-[![Donate](https://img.shields.io/badge/donate-PayPal-00457C?style=flat-square&logo=paypal&logoColor=white)](https://www.paypal.com/paypalme/hoangnc)
-
-**CleanDevMac** — `cdm` on your command line — is a terminal UI that finds the dev caches, build artifacts and leftover app data eating your disk, shows you exactly what and how big, and deletes only what you tick.
-
-The downloads badge counts fetches of the `cdm` release asset. Every `curl` install below hits that asset, so it is the real usage counter for this tool.
-
-Site: **<https://cleandevmac.github.io>**
-
-macOS only. Pure bash, no dependencies. Zero telemetry — the only network call `cdm` ever makes is fetching its own rule JSON. (Pressing `b` after a clean opens the donate link in your browser; nothing is ever sent anywhere.)
+macOS only. Pure bash, no dependencies. Zero telemetry — the only network call `cdm` ever makes is fetching its own rule JSON.
 
 ## Run it
 
 ```bash
-curl -sSL https://github.com/cleandevmac/cdm/releases/latest/download/cdm | bash
+curl -sSL https://github.com/dungtran-apero/cdm/releases/latest/download/cdm | bash
 ```
 
 There is no install step. The script runs straight from the pipe, scans, and hands you the TUI. When it exits, nothing of it is left on your Mac.
@@ -28,7 +15,7 @@ There is no install step. The script runs straight from the pipe, scans, and han
 Dry run first — scans and reports, deletes nothing:
 
 ```bash
-curl -sSL https://github.com/cleandevmac/cdm/releases/latest/download/cdm | bash -s -- -n
+curl -sSL https://github.com/dungtran-apero/cdm/releases/latest/download/cdm | bash -s -- -n
 ```
 
 ## Keep it around (optional)
@@ -37,14 +24,12 @@ Only do this if you want to run `cdm` again without the URL. It is the one thing
 
 ```bash
 mkdir -p ~/.local/bin
-curl -sSL https://github.com/cleandevmac/cdm/releases/latest/download/cdm -o ~/.local/bin/cdm
+curl -sSL https://github.com/dungtran-apero/cdm/releases/latest/download/cdm -o ~/.local/bin/cdm
 chmod +x ~/.local/bin/cdm
 cdm
 ```
 
 Make sure `~/.local/bin` is on your `PATH` (`export PATH="$HOME/.local/bin:$PATH"` in your shell rc). Re-run the `curl -o` line to update. To uninstall: `rm ~/.local/bin/cdm`.
-
-![CleanDevMac](screenshot.png)
 
 ## What it cleans
 
@@ -58,18 +43,23 @@ Make sure `~/.local/bin` is on your `PATH` (`export PATH="$HOME/.local/bin:$PATH
 
 **5. Orphaned app data** — Application Support, Caches and Preferences belonging to apps that are no longer installed.
 
+**6. Deep clean (all opt-in)** — every other folder in `~/Library/Caches` and `~/Library/Logs` that no specific rule names (Apple's own skipped, nothing counted twice), saved window state, Mail's attachment cache, iPhone/iPad backups (one row per device, to the Trash), `.ipsw` firmware, simulators whose runtime is gone (`xcrun simctl delete unavailable`), Android system images and AVDs (one row each), Homebrew's old versions (`brew cleanup --prune=all`).
+
+**7. Your large, long-unused files** — files of 200 MB+ in `~/Downloads`, `~/Desktop`, `~/Documents` and `~/Movies` not opened or changed in 90+ days, one row per file with its last-used date, listed as their own section at the bottom of the menu. Plus old `.dmg`/`.pkg`/`.iso` installers in Downloads. They are never pre-selected, `a`/`s`/`-y` never pick them, and a ticked file only ever goes to the Trash.
+
 ## Safety
 
 - **Nothing is deleted without an itemized confirmation.** You see the plan and the sizes, then type `y`.
 - **Caches are deleted permanently** — they regenerate on the next build.
 - **Orphaned app data and git-ignored files go to the Trash**, so they are recoverable.
 - **Never touched regardless of what the rules say:** `~/Documents`, `~/Desktop`, `~/Downloads`, `~/Pictures`, `~/.ssh`, and iCloud Drive. This guard sits below the rule engine — a rule cannot opt out of it.
+- **Your own files are opt-in, one by one, and recoverable.** The large-file rows have their own, stricter gate: a regular file (never a folder, never a symlink) physically inside Downloads/Desktop/Documents/Movies, not in iCloud Drive, not inside a git repo or a package (Photos library, VM, Final Cut bundle, ...). The only action is moving it to the Trash.
 - **A folder is only project junk if your repo git-ignores it.** Matching a name like `dist`, `build` or `Pods` is not enough — cdm verifies with git that the directory is ignored *and* untracked, so a tracked `build/` of release scripts or a committed `dist/` is left alone.
 - **`.env*` files are never offered for deletion.** The project scan skips them even though they're git-ignored — they hold secrets and local config nothing regenerates.
 - **App sandboxes and Apple/system-owned data are never touched.**
 - The installed-app list is read from **LaunchServices**, so prefPanes, plugins and other non-`.app` bundles aren't mis-flagged as orphaned.
 - `--dry-run` deletes nothing.
-- Every run is logged to `~/.cleandevmac/clean.log`.
+- Every run is logged to `~/.cdm/clean.log`.
 
 ## TUI keys
 
@@ -84,7 +74,7 @@ Make sure `~/.local/bin` is on your `PATH` (`export PATH="$HOME/.local/bin:$PATH
 | `c` | Clean — builds an itemized plan, confirm with `y` |
 | `q` (or `Esc`) | Quit |
 
-After a clean it prints the receipt and asks what next: `r` rescan · `b` buy me a coffee · `q` quit (the default — Enter or any other key does the same).
+After a clean it prints the receipt and asks what next: `r` rescan · `q` quit (the default — Enter or any other key does the same).
 
 Items are sorted biggest-first. Safe regenerable caches are pre-selected; the Maven repository, Playwright browsers, crash logs, project folders and orphaned app data all start unchecked — `s` resets to that default selection.
 
@@ -98,6 +88,7 @@ Targets live in JSON under `rules/`, not in code. Add or remove paths by editing
 | `dev-caches.json` | Dev caches & build artifacts |
 | `app-caches.json` | Electron, browser & app caches |
 | `containers.json` | Docker / Podman |
+| `deep-clean.json` | Catch-all caches/logs, device backups, simulators, Homebrew, your large old files |
 | `project-junk.json` | Per-repo project junk |
 | `orphans.json` | Orphaned app data detection |
 
@@ -105,12 +96,22 @@ Each category is an object with `icon`, `name`, `desc`, `paths`, `default` (pre-
 
 A category may also carry `procs` — the process names of apps that would rewrite those caches while running (`"procs": ["Google Chrome", "Code"]`). `cdm` names any that are open before asking you to confirm, since clearing a cache under its own app just hands the space straight back. Names must match `pgrep -x` exactly.
 
+Optional keys added for deep clean:
+
+| Key | Effect |
+| --- | --- |
+| `perItem: true` | One menu row per matched path instead of one per category |
+| `rest: true` | Catch-all: skip every path another rule already names |
+| `exclude: [globs]` | Basename globs to leave out |
+| `kind: "files"` | Your own files: `roots` (only inside Downloads/Desktop/Documents/Movies), optional `names`, `minSizeMB`, `minAgeDays`, `maxItems`, `maxDepth`, `prune`, `perItem`. Always Trash, never pre-selected |
+| `kind: "simulators"` / `"brew"` | Row for `xcrun simctl delete unavailable` / `brew cleanup --prune=all` |
+
 ## Options
 
 | Option | Effect |
 | --- | --- |
 | `-n`, `--dry-run` | Scan and report; delete nothing |
-| `-y`, `--yes` | Non-interactive: clean the pre-selected safe caches, then exit. Never touches project folders, orphaned app data, or the Trash |
+| `-y`, `--yes` | Non-interactive: clean the pre-selected safe caches, then exit. Never touches project folders, orphaned app data, your own files, or the Trash |
 | `-p`, `--projects` | Also scan code repos for project junk |
 | `--patterns SRC` | Load rules from a local directory or a base URL |
 | `--no-color` | Disable ANSI color |
@@ -122,14 +123,6 @@ A category may also carry `procs` — the process names of apps that would rewri
 | --- | --- |
 | `CDM_REMOTE` | Base URL rules are fetched from when no local copy is found |
 | `CDM_PATTERNS` | Rule source — a local directory or a base URL (same as `--patterns`) |
-
-## Support
-
-cdm is free and MIT, and it stays that way — no paid tier, no telemetry, nothing held back. If it gave you your disk back and you feel like buying me a coffee:
-
-**[paypal.me/hoangnc](https://www.paypal.com/paypalme/hoangnc)**
-
-Starring the repo or telling another developer about it helps just as much.
 
 ## Credits
 

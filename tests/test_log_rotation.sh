@@ -1,5 +1,5 @@
 #!/bin/bash
-# rotate_log (cdm) — keeps ~/.cleandevmac/clean.log from growing forever.
+# rotate_log (cdm) — keeps ~/.cdm/clean.log from growing forever.
 #
 # run_cleanup appends a receipt per clean via `tee -a` and nothing ever trimmed
 # it, so the log was unbounded. The properties worth pinning are that it caps,
@@ -10,7 +10,7 @@
 . "$(dirname "$0")/lib.sh"
 
 # lib.sh sandboxes $HOME, so LOG_DIR/LOG_FILE already point inside the sandbox.
-assert_ok "log dir is sandboxed" test "$LOG_DIR" = "$HOME/.cleandevmac"
+assert_ok "log dir is sandboxed" test "$LOG_DIR" = "$HOME/.cdm"
 
 # ---- a small log is left alone ---------------------------------------------
 

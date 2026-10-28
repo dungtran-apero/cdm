@@ -16,7 +16,7 @@
 #     `bash tests/test_foo.sh --verbose` would reach cdm's option parser and
 #     exit 1 on "Unknown option" before a single test ran.
 #   * Sourcing has side effects on disk: it mkdir -p's LOG_DIR
-#     ($HOME/.cleandevmac) and mktemp -d's SCAN_DIR, both at cdm's top level.
+#     ($HOME/.cdm) and mktemp -d's SCAN_DIR, both at cdm's top level.
 #     The sandbox contains the first; cdm's own EXIT trap removes the second,
 #     which is why the cleanup below calls cleanup_on_exit rather than replacing
 #     it.

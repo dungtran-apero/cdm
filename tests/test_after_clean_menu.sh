@@ -1,6 +1,5 @@
 #!/bin/bash
-# The post-clean prompt (after_clean_menu) and the donate action behind its `b`
-# key (open_donate).
+# The post-clean prompt (after_clean_menu): rescan or quit.
 #
 # What the assertions below are shaped around:
 #
@@ -15,19 +14,8 @@
 #     reads fd 0, which under `curl | bash` is the script itself. Each call
 #     below redirects fd 3 from a here-document, so this exercises the same
 #     read the tool uses rather than a stand-in.
-#   * `b` is the one key that does NOT answer the question, so it acts and asks
-#     again. The two-key fixtures are what pin that: feed `b` then `q` and the
-#     prompt must consume both. It is `b` and not `d` because the main menu
-#     already spends `d` on details — asserted below, since the collision is
-#     exactly the sort of thing that creeps back in.
-#   * open(1) is shadowed by a function that records its argument. That is the
-#     only seam here — the alternative is a test that opens a payment page in
-#     the developer's browser — and it pins the thing that matters: the URL
-#     handed over is DONATE_URL, unmodified.
-#   * the donate line is the tool's one ask for money and cdm keeps it to two
-#     places (--help, and a clean that freed something). This prompt is inside
-#     the second, so `q` and EOF must not open anything: asserted by the log
-#     staying empty, not just by the return status.
+#   * open(1) is shadowed by a function that records its argument, so the rows
+#     below can assert the prompt never hands anything to the browser.
 
 . "$(dirname "$0")/lib.sh"
 
@@ -89,53 +77,9 @@ assert_eq "1" "$(after_clean_menu 3</dev/null >/dev/null 2>&1; echo $?)" \
 # Nothing above went anywhere near the browser.
 assert_eq "" "$(t_opened)" "answering the prompt never opens anything on its own"
 
-# ---- b: acts, then asks again ----------------------------------------------
-
+# `b` used to open a donate link; it is gone, so it is an unrecognized key now.
 t_reset
-assert_eq "1" "$(t_menu bq)" "b opens the link, then the prompt asks again"
-assert_eq "$DONATE_URL" "$(t_opened)" "b hands DONATE_URL to open(1), unmodified"
-
-t_reset
-assert_eq "0" "$(t_menu br)" "b then r opens the link and rescans"
-assert_eq "$DONATE_URL" "$(t_opened)" "one keypress, one open"
-
-# It really does keep asking — three donates and a quit is four reads, and a
-# prompt that returned after the first would consume only one.
-t_reset
-assert_eq "1" "$(t_menu bbbq)" "b can be pressed repeatedly"
-assert_eq "$DONATE_URL
-$DONATE_URL
-$DONATE_URL" "$(t_opened)" "each b opens the link once"
-
-# EOF right after a b: the prompt has re-asked and there is nothing left to
-# read, which is the default again rather than a spin.
-t_reset
-assert_eq "1" "$(t_menu b)" "b followed by EOF takes the default (quit)"
-assert_eq "$DONATE_URL" "$(t_opened)" "the b before the EOF still acted"
-
-# The letter this prompt does NOT use, and the reason: the main menu already
-# spends `d` on details ("show the exact paths behind an item"), and one letter
-# meaning two things across the tool's two prompts is a keymap that never
-# recovers. Here `d` is simply not a key — it takes the default like any other
-# unrecognized one, and it opens nothing.
-t_reset
-assert_eq "1" "$(t_menu d)" "d is not the donate key — it takes the default (quit)"
-assert_eq "" "$(t_opened)" "d opens nothing"
-
-# ---- open_donate: the fallback when open(1) is unavailable -----------------
-#
-# Piped into a container, over ssh, or on a Mac where the handler is broken,
-# open(1) fails. The URL still has to reach the user as text — it is the entire
-# point of the keypress.
-t_reset
-assert_eq "$DONATE_URL" "$(open_donate | sed "s/$(printf '\033')\[[0-9;]*m//g" | awk '{print $NF}')" \
-    "a successful open still shows the URL"
-
-# Shadow the shadow: open(1) refuses.
-open() { return 1; }
-t_reset
-t_out=$(open_donate | sed "s/$(printf '\033')\[[0-9;]*m//g")
-assert_eq "  $DONATE_URL" "$t_out" "a failed open prints the URL instead"
-assert_eq "" "$(t_opened)" "the failing open recorded nothing"
+assert_eq "1" "$(t_menu b)" "b is not a key — it takes the default (quit)"
+assert_eq "" "$(t_opened)" "b opens nothing"
 
 test_summary

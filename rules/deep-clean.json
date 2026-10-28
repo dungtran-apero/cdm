@@ -1,0 +1,131 @@
+{
+  "title": "Deep clean",
+  "_comment": "Everything past dev caches. Nothing here is pre-selected. 'rest': true makes a catch-all category skip every path another rule already names (same path, inside it, or containing it), so ~/Library/Caches/* never double-counts. 'exclude' lists basename globs to leave out. 'perItem': true shows one row per matched path, so each backup / emulator image is picked on its own. kind 'simulators' and 'brew' run a fixed command the script hard-codes. kind 'files' lists the user's own large, long-unused files: the script, not this file, decides they only ever go to the Trash, only from Downloads/Desktop/Documents/Movies, and are never pre-selected or picked by 'a' / -y.",
+  "categories": [
+    {
+      "icon": "🗄️",
+      "name": "Other app caches",
+      "method": "rm",
+      "default": false,
+      "rest": true,
+      "desc": "Every other folder in ~/Library/Caches that no specific rule names — apps rebuild them. Quit apps first. Apple's own system caches are left alone.",
+      "paths": ["~/Library/Caches/*"],
+      "exclude": [
+        "com.apple.*", "CloudKit", "FamilyCircle", "familycircled", "GeoServices",
+        "Metadata", "AAProfilePicture_*", "Animoji", "EnergyKit", "GameKit",
+        "PassKit", "INSTALLATION", "askpermissiond", "storedownloadd",
+        "nsurlsessiond", "*.sock", "*.lock"
+      ]
+    },
+    {
+      "icon": "📜",
+      "name": "Other app logs",
+      "method": "rm",
+      "default": false,
+      "rest": true,
+      "desc": "Every other folder/file in ~/Library/Logs no specific rule names — old log output, never read back by apps.",
+      "paths": ["~/Library/Logs/*"],
+      "exclude": ["com.apple.*"]
+    },
+    {
+      "icon": "🪟",
+      "name": "Saved window state",
+      "method": "rm",
+      "default": false,
+      "rest": true,
+      "desc": "Per-app window restore data (~/Library/Saved Application State). Apps just reopen with fresh windows.",
+      "paths": ["~/Library/Saved Application State/*"]
+    },
+    {
+      "icon": "✉️",
+      "name": "Mail attachment cache",
+      "method": "rm",
+      "default": false,
+      "desc": "Copies of attachments Mail saved when you opened them — the originals stay in the mail. Needs Full Disk Access to be seen.",
+      "procs": ["Mail"],
+      "paths": [
+        "~/Library/Containers/com.apple.mail/Data/Library/Mail Downloads/*",
+        "~/Library/Mail Downloads/*"
+      ]
+    },
+    {
+      "icon": "📱",
+      "name": "iPhone/iPad backup",
+      "method": "trash",
+      "default": false,
+      "perItem": true,
+      "desc": "A local Finder/iTunes device backup. Moved to the Trash (recoverable). Keep the latest one of any device you still use.",
+      "paths": ["~/Library/Application Support/MobileSync/Backup/*"]
+    },
+    {
+      "icon": "💿",
+      "name": "iOS/macOS firmware (.ipsw)",
+      "method": "rm",
+      "default": false,
+      "desc": "Restore images Finder/Configurator downloaded — fetched again if you ever restore a device.",
+      "paths": [
+        "~/Library/iTunes/*Software Updates/*.ipsw",
+        "~/Library/Group Containers/K36BKF7T3D.group.com.apple.configurator/Library/Caches/Firmware/*.ipsw",
+        "~/Library/Containers/com.apple.AMPDevicesAgent/Data/Library/Caches/*.ipsw"
+      ]
+    },
+    {
+      "kind": "simulators",
+      "icon": "📵",
+      "name": "Dead iOS simulators",
+      "default": false,
+      "desc": "Simulators whose iOS runtime is gone (Xcode moved past it) — they can never boot again. Removed with 'xcrun simctl delete unavailable'."
+    },
+    {
+      "icon": "🤖",
+      "name": "Android system image",
+      "method": "rm",
+      "default": false,
+      "perItem": true,
+      "desc": "An emulator system image in the Android SDK — re-downloadable from SDK Manager.",
+      "paths": [
+        "~/Library/Android/sdk/system-images/*/*"
+      ]
+    },
+    {
+      "icon": "📲",
+      "name": "Android emulator (AVD)",
+      "method": "trash",
+      "default": false,
+      "perItem": true,
+      "desc": "An Android Virtual Device and its data. Moved to the Trash (recoverable); delete its leftover entry in Device Manager afterwards.",
+      "paths": ["~/.android/avd/*.avd"]
+    },
+    {
+      "kind": "brew",
+      "icon": "🍺",
+      "name": "Homebrew old versions",
+      "default": false,
+      "desc": "Outdated formula/cask versions and stale downloads Homebrew keeps around. Removed with 'brew cleanup --prune=all'."
+    },
+    {
+      "kind": "files",
+      "icon": "💾",
+      "name": "Old installers in Downloads",
+      "desc": "Disk images and installer packages in ~/Downloads untouched for 30+ days — usually already installed. Moved to the Trash (recoverable). Archives (.zip, ...) are not listed here: those are often your own data.",
+      "roots": ["~/Downloads"],
+      "names": ["*.dmg", "*.pkg", "*.mpkg", "*.iso", "*.xip", "*.ipsw"],
+      "minSizeMB": 20,
+      "minAgeDays": 30,
+      "maxItems": 200,
+      "maxDepth": 3
+    },
+    {
+      "kind": "files",
+      "icon": "🗃️",
+      "name": "Large old file",
+      "perItem": true,
+      "desc": "Your file — not opened or changed in 90+ days:",
+      "roots": ["~/Downloads", "~/Desktop", "~/Documents", "~/Movies"],
+      "minSizeMB": 200,
+      "minAgeDays": 90,
+      "maxItems": 60,
+      "maxDepth": 10
+    }
+  ]
+}
