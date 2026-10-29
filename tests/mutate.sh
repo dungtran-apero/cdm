@@ -224,24 +224,10 @@ check_mutation 'status row plain shadow loses the disk (mis-measured)' test_disk
 # Addressed to the function: `*) return 1 ;;` is a shape that appears in other
 # case statements, and a global rewrite would mutate one of those instead.
 check_mutation 'post-clean prompt defaults to rescan, not quit' test_after_clean_menu.sh \
-    '/^after_clean_menu()/,/^}/ s|            \*)   return 1 ;;|            *)   return 0 ;;|'
+    '/^after_clean_menu()/,/^}/ s|        \*)   return 1 ;;|        *)   return 0 ;;|'
 
 check_mutation 'post-clean prompt ignores an uppercase R' test_after_clean_menu.sh \
-    's|            r\|R) return 0 ;;|            r) return 0 ;;|'
-
-check_mutation 'donating quits instead of re-asking' test_after_clean_menu.sh \
-    's|            b\|B) open_donate ;;|            b\|B) open_donate; return 1 ;;|'
-
-# The key choice itself. `d` is the main menu's details key, and a prompt that
-# quietly takes it back gives one letter two meanings across the tool.
-check_mutation 'the donate key moves back onto d (collides with details)' test_after_clean_menu.sh \
-    's|            b\|B) open_donate ;;|            d\|D) open_donate ;;|'
-
-check_mutation 'the donate key opens something other than DONATE_URL' test_after_clean_menu.sh \
-    's|if open "\$DONATE_URL" >/dev/null 2>&1; then|if open "$LOG_FILE" >/dev/null 2>\&1; then|'
-
-check_mutation 'a failed open swallows the URL' test_after_clean_menu.sh \
-    's|        printf .%b\\n. "  \${CYAN}\${DONATE_URL}\${NC}"|        :|'
+    's|        r\|R) return 0 ;;|        r) return 0 ;;|'
 
 check_mutation 'expand_tilde ignores bare ~' test_helpers.sh \
     's|"~") echo "\$HOME" ;;|"~") echo "~" ;;|'
@@ -504,7 +490,7 @@ check_mutation 'parser ignores PROC records' test_running_apps.sh \
     's|            PROC) cprocs="\${cprocs:+\$cprocs|            ZZPROC) cprocs="${cprocs:+$cprocs|'
 
 check_mutation 'cprocs not reset per category (procs leak to the next rule)' test_running_apps.sh \
-    's|have=1; cpaths=""; cdirs=""; cengines=""; cprocs="" ;;|have=1; cpaths=""; cdirs=""; cengines="" ;;|'
+    's|have=1; cpaths=""; cdirs=""; cengines=""; cprocs=""$|have=1; cpaths=""; cdirs=""; cengines=""|'
 
 check_mutation 'register_paths drops procs on the way to add_category' test_running_apps.sh \
     's|"\$default" "\$found" "" "\$procs"|"$default" "$found" ""|'

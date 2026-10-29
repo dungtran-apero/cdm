@@ -14,9 +14,10 @@ to "simplify" something in `cdm` that looks convoluted, look for it here first.
 <a id="what-cdm-is"></a>
 ## What cdm is
 
-CleanDevMac (cdm) — https://cleandevmac.github.io
-Interactive macOS cleanup for developer caches, build artifacts, temp data,
-leftover data from uninstalled apps, and regenerable folders in your code repos.
+cdm — https://github.com/dungtran-apero/cdm
+Interactive macOS deep clean: developer caches, build artifacts, temp data,
+leftover data from uninstalled apps, regenerable folders in your code repos, and
+large files you have not opened in months.
 
 What it does:
   1. Reclaims space from regenerable caches / build output (Xcode, Go, Node,
@@ -24,12 +25,17 @@ What it does:
   2. Clears project junk in your repos (node_modules, dist, build, target,
      __pycache__, or anything your .gitignore ignores).
   3. Surfaces leftover data from apps that are no longer installed.
+  4. Deep clean, all opt-in: every other user cache/log, saved window state,
+     iPhone backups and firmware, dead simulators, Android images/AVDs,
+     Homebrew's old versions.
+  5. Lists large, long-unused files in Downloads/Desktop/Documents/Movies, one
+     row per file with its last-used date, for the user to pick one by one.
 
 Everything it can clean is described by JSON "rule" files (see the rules/
-directory of the cleandevmac/cdm repo). The tool reads them from a local
+directory of the dungtran-apero/cdm repo). The tool reads them from a local
 folder, or downloads them, so it also runs standalone:
 
-  curl -sSL https://github.com/cleandevmac/cdm/releases/latest/download/cdm | bash
+  curl -sSL https://github.com/dungtran-apero/cdm/releases/latest/download/cdm | bash
 
 Nothing is deleted without an itemized confirmation. Caches / build output are
 removed permanently (they regenerate); orphaned app data and git-ignored files
@@ -160,7 +166,7 @@ argument for pinning rather than localizing: cdm is not translated. The label
 beside that number says "Reclaimable", the receipt it lands in is English, and
 every other number the tool prints is an integer with no separator at all. A
 comma there is not a translation, it is the single localized glyph in an English
-sentence — and it would make the format of `~/.cleandevmac/clean.log` depend on
+sentence — and it would make the format of `~/.cdm/clean.log` depend on
 which shell happened to launch the run. Localizing the UI is a real project; it
 does not start with the decimal point.
 
@@ -792,46 +798,89 @@ this exists to stop. One file, one ceiling.
 <a id="after-clean-menu"></a>
 ## The post-clean prompt
 
-after_clean_menu — the one question asked after a clean has run: rescan (`r`),
-open the donate link (`b`), or quit (`q`). Returns 0 to rescan and 1 to quit; the main loop does
-the work, so the prompt only decides.
+after_clean_menu — the one question asked after a clean has run: rescan (`r`)
+or quit (`q`). Returns 0 to rescan and 1 to quit; the main loop does the work,
+so the prompt only decides.
 
-**Quit is the default**, and everything that is not an explicit `r` or `b`
-reaches it — Enter, `q`, Esc, an unrecognized key, a closed stdin. The clean has
-already happened by this point, so there is nothing to lose by leaving and no
-reason to nag someone into answering precisely. It replaced an unconditional
-"press any key to return to the menu" followed by an automatic rescan: that
-rescan cost a full second scan every time, and the common case — clean, read the
-receipt, leave — had to walk back through a menu to get out.
-
-`b` is the exception that re-asks, because opening a browser is not an answer to
-"what next". Press it three times and the link opens three times; the prompt is
-still waiting afterwards.
-
-It is `b` — for the "buy me a coffee" label it sits beside — and not the obvious
-`d` for donate, because the menu one screen earlier already spends `d` on
-details. The two prompts never share a screen, so nothing would have broken; one
-letter carrying two meanings is simply a debt a keymap never pays off. `d` is
-therefore not a key here at all, and takes the default like anything else.
+**Quit is the default**, and everything that is not an explicit `r` reaches it —
+Enter, `q`, Esc, an unrecognized key, a closed stdin. The clean has already
+happened by this point, so there is nothing to lose by leaving and no reason to
+nag someone into answering precisely. It replaced an unconditional "press any key
+to return to the menu" followed by an automatic rescan: that rescan cost a full
+second scan every time, and the common case — clean, read the receipt, leave —
+had to walk back through a menu to get out.
 
 The prompt reads fd 3 like every other keypress in the tool
 ([why](#fd-3)), and absorbs a SIGWINCH-interrupted read the way the confirm and
 wait_any_key do, so a resize is never mistaken for an answer.
 
-<a id="donate-link"></a>
-## The donate link is opened, not fetched
+<a id="rest-categories"></a>
+## "rest" categories: catch-alls that never double-count
 
-`open_donate` hands DONATE_URL to `open(1)` — the only thing in cdm that can
-reach the network on a user's behalf, and it does so on a single explicit
-keypress, after a clean, in the one place the URL was already being printed.
-cdm still makes no request of its own: rule JSON remains the only thing it
-*fetches*, there is no telemetry, and nothing is sent anywhere. Handing a URL to
-the user's browser is what clicking the printed link would have done anyway.
+A rule with `"rest": true` (e.g. `~/Library/Caches/*`) is not registered while
+its file is parsed. It is queued and registered by `register_rest` at the end of
+`build_categories` — after every other path category, the project scan and the
+orphan scan — and every path it matches is dropped when it is the same as, sits
+inside, or contains a path an earlier category already holds. So the catch-all
+shows only what no specific rule names, its size is not counted twice, and a
+leftover folder of an uninstalled app stays in its orphan row (Trash) rather
+than also landing in a catch-all row (rm).
 
-When `open` is unavailable or refuses — piped into a container, over ssh, a Mac
-with no handler for https — the URL is printed instead. That fallback is not
-politeness: the keypress means "show me this", and a silent failure would look
-like the tool ignoring it.
+Containing counts as overlap on purpose: `~/Library/Caches/Google` is dropped
+whole if any rule names something under it. Over-matching only shrinks the
+catch-all; it never deletes something another rule meant to keep.
+
+`exclude` takes basename globs (`com.apple.*`) and works on any path category.
+`perItem: true` gives one row per matched path, named from the part of the path
+after the pattern's fixed prefix (an iOS backup uses its Info.plist device name
+instead), so one backup or one emulator image can be picked on its own.
+
+<a id="user-files"></a>
+## The user's own files (kind "files", method "trashfile")
+
+`is_safe_target` refuses Downloads, Desktop, Documents and Movies outright, and
+that does not change. Large, long-unused files there are offered through a
+separate path with its own, narrower gate, `is_safe_user_file`:
+
+- **One outcome.** Method `trashfile` exists only for these rows and only ever
+  calls `move_to_trash`. The JSON `method` of a `files` rule is ignored; the
+  script decides.
+- **Regular files only**, never a directory, never a symlink — so a link inside
+  Downloads cannot point the Trash at something elsewhere.
+- **Fixed roots.** `USER_FILE_ROOTS` is hard-coded. A rule's `roots` outside that
+  set are skipped, so an edited rules file can narrow the scan but not widen it.
+  Pictures and Music are deliberately absent: their libraries are packages whose
+  insides look like loose large files.
+- **Physical containment** like is_safe_target, plus an explicit refusal of
+  anything that resolves into iCloud Drive (`~/Library/Mobile Documents`).
+- **Never inside a project or a package.** find prunes `.git`, `node_modules`,
+  and package names (`*.photoslibrary`, `*.fcpbundle`, VM bundles, ...), and every
+  hit is re-checked by walking its ancestors (`in_repo_or_package`), which also
+  catches a worktree whose `.git` is a file. JSON `prune` adds names; it cannot
+  remove the built-in ones.
+- **Never chosen for the user.** Rows arrive unselected, `a` and `s` skip them,
+  and `-y` therefore never reaches them. Each one is ticked with space.
+
+"Unused" is the later of Spotlight's `kMDItemLastUsedDate` and the file's mtime:
+a finished download that was never opened has no last-used date, and Spotlight
+may not index every volume, so mtime alone or Spotlight alone would each call a
+fresh file old. The date is shown on the row and in the details view. Size is
+re-measured with `du`, so an iCloud placeholder (dataless) measures 0 and is
+pruned like any empty category.
+
+These rows sort after everything else (`sort_by_size` groups them), so the menu
+reads as caches first and "your files" as their own section at the bottom.
+
+<a id="tool-cleanup"></a>
+## Tool-managed cleanup (simulators, Homebrew)
+
+Two things are cleaned by asking their owner rather than deleting paths:
+unavailable simulators (`xcrun simctl delete unavailable`, sized by `du` of the
+device folders `simctl list devices unavailable` names) and Homebrew's old
+versions (`brew cleanup --prune=all`, sized by its own `-n` estimate). As with
+containers, the command is hard-coded in the script; JSON only says whether the
+row exists and what it is called. Both lookups run under `bounded` so a missing
+or hung toolchain cannot stall the scan.
 
 <a id="resize-redraw"></a>
 ## Redraw on resize

@@ -1,8 +1,9 @@
 #!/bin/bash
 
-# CleanDevMac (cdm) — https://cleandevmac.github.io
-# Interactive macOS cleanup for developer caches, build artifacts, project junk
-# and leftover data from uninstalled apps. Nothing is deleted without an itemized
+# cdm — https://github.com/dungtran-apero/cdm
+# Interactive macOS deep clean: developer caches, build artifacts, project junk,
+# leftover data from uninstalled apps, and large files you have not opened in a
+# long time. Nothing is deleted without an itemized
 # confirmation; --dry-run only looks. What it cleans: docs/DESIGN.md#what-cdm-is
 
 set -u
@@ -24,11 +25,7 @@ K="${ESC}[K"    # erase from the cursor to the end of the line
 NL=$'\n'
 
 # Where pattern files are fetched from when no local copy is found.
-REMOTE_BASE="${CDM_REMOTE:-https://raw.githubusercontent.com/cleandevmac/cdm/main/rules}"
-
-# Shown in --help and once after a clean that freed something. Never fetched,
-# never pinged — it is a string this script prints, nothing more.
-DONATE_URL="https://www.paypal.com/paypalme/hoangnc"
+REMOTE_BASE="${CDM_REMOTE:-https://raw.githubusercontent.com/dungtran-apero/cdm/main/rules}"
 
 # ---- Options ---------------------------------------------------------------
 DRY_RUN=0
@@ -39,20 +36,20 @@ PATTERNS_SRC="${CDM_PATTERNS:-}"            # override: a local dir or a base UR
 
 usage() {
     cat <<EOF
-${CYAN}CleanDevMac${NC} (${BOLD}cdm${NC}) — reclaim disk from dev caches, project junk & leftover app data.
+${CYAN}cdm${NC} — deep clean your Mac: dev caches, project junk, leftover app data & old large files.
 
 ${YELLOW}Usage:${NC}
   cdm [options]
 
   ${DIM}# standalone, no install:${NC}
-  curl -sSL https://github.com/cleandevmac/cdm/releases/latest/download/cdm | bash
+  curl -sSL https://github.com/dungtran-apero/cdm/releases/latest/download/cdm | bash
   ${DIM}# standalone, dry-run:${NC}
-  curl -sSL https://github.com/cleandevmac/cdm/releases/latest/download/cdm | bash -s -- -n
+  curl -sSL https://github.com/dungtran-apero/cdm/releases/latest/download/cdm | bash -s -- -n
 
 ${YELLOW}Options:${NC}
   -n, --dry-run        scan and show what could be freed, delete nothing
   -y, --yes            non-interactive: clean the pre-selected safe caches, then exit
-                       (does NOT touch project folders, orphaned data, or the Trash)
+                       (does NOT touch project folders, orphaned data, your own files, or the Trash)
   -p, --projects       scan your code repos and list junk grouped PER PROJECT,
                        so you can pick which repos to clean (node_modules, dist,
                        build, target, __pycache__, git-ignored, ...). Off by
@@ -61,7 +58,7 @@ ${YELLOW}Options:${NC}
                        needed for non-interactive/scripted use.
       --patterns SRC   load rule JSON from a local directory or a base URL
                        (default: the rules/ folder next to this script,
-                        else ~/.cleandevmac/rules,
+                        else ~/.cdm/rules,
                         else ${REMOTE_BASE})
       --no-color       disable colored output
   -h, --help           show this help
@@ -73,6 +70,11 @@ ${YELLOW}What it cleans (all described by editable JSON pattern files):${NC}
     target, git-ignored) — pick exactly which repos to clean. Only ever what
     your repo already git-ignores; a tracked build/ or dist/ is left alone.
   • Leftover data from apps you have uninstalled (moved to Trash, recoverable).
+  • Deep clean: every other user cache/log, iPhone backups & firmware, dead
+    simulators, Android images, Homebrew leftovers — all opt-in.
+  • Large files in Downloads/Desktop/Documents/Movies you have not opened in
+    months, one row per file with its last-used date. Never pre-selected, never
+    picked by 'a' or -y — you tick each one, and it goes to the Trash.
 
 ${YELLOW}Safety:${NC}
   • Caches & build output regenerate — removing them costs only a re-download/build.
@@ -80,9 +82,7 @@ ${YELLOW}Safety:${NC}
     hard-deleted, so you can undo.
   • Nothing runs until you review an itemized plan and confirm.
   • App sandboxes and Apple/system-owned data are never touched.
-
-${YELLOW}Free & MIT.${NC} If cdm gave you your disk back, you can buy me a coffee:
-  ${CYAN}${DONATE_URL}${NC}
+  • Your own files are only ever moved to the Trash, one by one, by your choice.
 EOF
 }
 
@@ -102,7 +102,7 @@ done
 
 # ---- Preconditions ---------------------------------------------------------
 if [ "$(uname -s)" != "Darwin" ]; then
-    echo "${RED}Error: CleanDevMac is for macOS only.${NC}" >&2
+    echo "${RED}Error: cdm is for macOS only.${NC}" >&2
     exit 1
 fi
 if [ -z "${HOME:-}" ] || [ "$HOME" = "/" ] || [ ! -d "$HOME" ]; then
@@ -132,7 +132,7 @@ else
     exec 3< /dev/null
 fi
 
-LOG_DIR="$HOME/.cleandevmac"
+LOG_DIR="$HOME/.cdm"
 mkdir -p "$LOG_DIR" 2>/dev/null || true
 LOG_FILE="$LOG_DIR/clean.log"
 # clean.log only ever grows, and a disk-cleanup tool has no business eating the
@@ -376,6 +376,14 @@ function run(argv) {
     (c.dirs    || []).forEach(function(d){ out.push(tab('D', d)); });
     (c.engines || []).forEach(function(e){ out.push(tab('E', e)); });
     (c.procs   || []).forEach(function(p){ out.push(tab('PROC', p)); });
+    (c.roots   || []).forEach(function(r){ out.push(tab('R', r)); });
+    (c.names   || []).forEach(function(n){ out.push(tab('N', n)); });
+    (c.exclude || []).forEach(function(x){ out.push(tab('X', x)); });
+    (c.prune   || []).forEach(function(x){ out.push(tab('CPRUNE', x)); });
+    ['perItem', 'rest'].forEach(function(k){ if (c[k]) out.push(tab('COPT', k, 1)); });
+    ['minSizeMB', 'minAgeDays', 'maxItems', 'maxDepth'].forEach(function(k){
+      if (c[k] != null) out.push(tab('COPT', k, c[k]));
+    });
   });
   (o.patternFiles    || []).forEach(function(f){ out.push(tab('FILE', f)); });
   if (o.orphanConfig) out.push(tab('ORPHAN', o.orphanConfig));
@@ -407,6 +415,15 @@ PROJ_ICON=(); PROJ_NAME=(); PROJ_METHOD=(); PROJ_DEFAULT=(); PROJ_DESC=(); PROJ_
 GI_ICON=""; GI_NAME=""; GI_METHOD="trash"; GI_DEFAULT=0; GI_DESC=""; GI_ON=0
 # Pending container (docker/podman) categories (filled by JSON).
 CONT_ICON=(); CONT_NAME=(); CONT_METHOD=(); CONT_DEFAULT=(); CONT_DESC=(); CONT_ENGINES=(); CONT_N=0
+# Pending "rest" path categories: registered after every other path category so
+# they can skip whatever an earlier rule already claimed. see docs/DESIGN.md#rest-categories
+REST_ICON=(); REST_NAME=(); REST_METHOD=(); REST_DEFAULT=(); REST_DESC=(); REST_PATHS=(); REST_EXCL=(); REST_N=0
+# Pending user-file categories (kind "files", filled by scan_user_files) and
+# tool categories (kind "simulators" / "brew", filled by scan_tools).
+# see docs/DESIGN.md#user-files
+UF_ICON=(); UF_NAME=(); UF_DEFAULT=(); UF_DESC=(); UF_ROOTS=(); UF_NAMES=(); UF_PRUNE=()
+UF_MINMB=(); UF_MINAGE=(); UF_MAX=(); UF_DEPTH=(); UF_PERITEM=(); UF_N=0
+TOOL_KIND=(); TOOL_ICON=(); TOOL_NAME=(); TOOL_DEFAULT=(); TOOL_DESC=(); TOOL_N=0
 
 # Orphan-detection config.
 ORPH_LOC_PATH=(); ORPH_LOC_STRIP=(); SKIP_PREFIXES=(); SHARED_COMPONENTS=()
@@ -420,12 +437,18 @@ add_category() { # icon name desc method default paths [pmethods] [procs]
 
 # register_paths — expand a newline-separated path list (~ and * globs) into the
 # concrete, existing, non-empty, de-duplicated paths, then add the category.
+# [peritem]=1 adds one row per path instead (see item_label); [excl] is a
+# newline-separated list of basename globs to leave out.
 register_paths() {
     local icon="$1" name="$2" method="$3" default="$4" desc="$5" pathlist="$6" procs="${7:-}"
-    local found="" pat m
+    local peritem="${8:-0}" excl="${9:-}"
+    local found="" labels="" pat m pre x skip
     while IFS= read -r pat; do
         [ -n "$pat" ] || continue
         pat=$(expand_tilde "$pat")
+        # The fixed part of the pattern, up to the directory holding the first
+        # glob — what a per-item row's label is measured from.
+        pre="${pat%%[*?[]*}"; pre="${pre%/*}/"
         # Expand with bash's own pathname expansion, not compgen/process substitution: a
         # fork per pattern over ~250 patterns makes bash 3.2 stop making progress. IFS is
         # emptied so unquoted $pat globs without word-splitting (patterns contain spaces).
@@ -440,15 +463,85 @@ $found
 " in *"
 $m
 "*) IFS=; continue ;; esac
+            if [ -n "$excl" ]; then
+                skip=0
+                while IFS= read -r x; do
+                    [ -n "$x" ] || continue
+                    # $x unquoted on purpose: it is a glob.
+                    case "${m##*/}" in $x) skip=1; break ;; esac
+                done <<EOF
+$excl
+EOF
+                [ "$skip" -eq 1 ] && { IFS=; continue; }
+            fi
             found="${found:+$found
 }$m"
+            labels="${labels:+$labels
+}${m#$pre}"
             IFS=
         done
         IFS="$__ifs"
     done <<EOF
 $pathlist
 EOF
-    [ -n "$found" ] && add_category "$icon" "$name" "$desc" "$method" "$default" "$found" "" "$procs"
+    [ -n "$found" ] || return 0
+    if [ "$peritem" != 1 ]; then
+        add_category "$icon" "$name" "$desc" "$method" "$default" "$found" "" "$procs"
+        return 0
+    fi
+    local lbl
+    while IFS= read -r m && IFS= read -r lbl <&4; do
+        add_category "$icon" "$name: $(item_label "$m" "$lbl")" "$desc ${m/#$HOME/~}" \
+            "$method" "$default" "$m" "" "$procs"
+        CAT_SUMMARY[$((N - 1))]="modified $(path_date "$m")"
+    done 4<<EOF4 <<EOF
+$labels
+EOF4
+$found
+EOF
+}
+
+# item_label <path> <fallback> — the name a per-item row shows. An iPhone/iPad
+# backup folder is a bare UUID, so prefer the device name its Info.plist carries.
+item_label() {
+    local dn=""
+    [ -f "$1/Info.plist" ] && dn=$(defaults read "$1/Info" "Device Name" 2>/dev/null)
+    if [ -n "$dn" ]; then printf '%s' "$dn"; else printf '%s' "$2"; fi
+}
+
+# path_date <path> — the path's modification day, YYYY-MM-DD.
+path_date() { stat -f '%Sm' -t '%Y-%m-%d' "$1" 2>/dev/null || printf '?'; }
+
+# register_rest — add the queued "rest" categories, each minus every path an
+# earlier category already claimed (the same path, inside it, or containing it),
+# so a catch-all like ~/Library/Caches/* never double-counts a cache another rule
+# names. see docs/DESIGN.md#rest-categories
+register_rest() {
+    [ "$REST_N" -gt 0 ] || return 0
+    local claimed="$SCAN_DIR/claimed" i=0 j kept
+    : > "$claimed"
+    j=0
+    while [ "$j" -lt "$N" ]; do printf '%s\n' "${CAT_PATHS[$j]}" >> "$claimed"; j=$((j + 1)); done
+    while [ "$i" -lt "$REST_N" ]; do
+        local before=$N
+        register_paths "${REST_ICON[$i]}" "${REST_NAME[$i]}" "${REST_METHOD[$i]}" \
+            "${REST_DEFAULT[$i]}" "${REST_DESC[$i]}" "${REST_PATHS[$i]}" "" 0 "${REST_EXCL[$i]}"
+        i=$((i + 1))
+        [ "$N" -gt "$before" ] || continue
+        kept=$(printf '%s\n' "${CAT_PATHS[$((N - 1))]}" | awk '
+            NR == FNR { if ($0 != "") c[++n] = $0; next }
+            $0 != "" { for (k = 1; k <= n; k++) {
+                         q = c[k]
+                         if ($0 == q || index(q, $0 "/") == 1 || index($0, q "/") == 1) next
+                       }
+                       print }' "$claimed" -)
+        if [ -z "$kept" ]; then
+            N=$((N - 1))
+        else
+            CAT_PATHS[$((N - 1))]="$kept"
+            printf '%s\n' "$kept" >> "$claimed"
+        fi
+    done
 }
 
 # ---------------------------------------------------------------------------
@@ -473,7 +566,7 @@ resolve_patterns() {
 
     # 1) Locate a source of index.json: explicit --patterns, a rules/ folder next
     #    to this script (repo checkout) or one level up (script kept in a bin/),
-    #    ~/.cleandevmac/rules, or remote.
+    #    ~/.cdm/rules (~/.cleandevmac/rules from older installs), or remote.
     local base=""
     if [ -n "$PATTERNS_SRC" ]; then
         base="$PATTERNS_SRC"
@@ -486,6 +579,8 @@ resolve_patterns() {
             base="$self_dir/rules"
         elif [ -n "$self_dir" ] && [ -f "$self_dir/../rules/index.json" ]; then
             base=$(cd "$self_dir/../rules" && pwd)
+        elif [ -f "$HOME/.cdm/rules/index.json" ]; then
+            base="$HOME/.cdm/rules"
         elif [ -f "$HOME/.cleandevmac/rules/index.json" ]; then
             base="$HOME/.cleandevmac/rules"
         else
@@ -543,6 +638,10 @@ load_patterns() {
     PROJ_ICON=(); PROJ_NAME=(); PROJ_METHOD=(); PROJ_DEFAULT=(); PROJ_DESC=(); PROJ_DIRS=(); PROJ_N=0
     GI_ON=0; GI_ICON=""; GI_NAME=""; GI_METHOD="trash"; GI_DEFAULT=0; GI_DESC=""
     CONT_ICON=(); CONT_NAME=(); CONT_METHOD=(); CONT_DEFAULT=(); CONT_DESC=(); CONT_ENGINES=(); CONT_N=0
+    REST_ICON=(); REST_NAME=(); REST_METHOD=(); REST_DEFAULT=(); REST_DESC=(); REST_PATHS=(); REST_EXCL=(); REST_N=0
+    UF_ICON=(); UF_NAME=(); UF_DEFAULT=(); UF_DESC=(); UF_ROOTS=(); UF_NAMES=(); UF_PRUNE=()
+    UF_MINMB=(); UF_MINAGE=(); UF_MAX=(); UF_DEPTH=(); UF_PERITEM=(); UF_N=0
+    TOOL_KIND=(); TOOL_ICON=(); TOOL_NAME=(); TOOL_DEFAULT=(); TOOL_DESC=(); TOOL_N=0
     ORPH_LOC_PATH=(); ORPH_LOC_STRIP=(); SKIP_PREFIXES=(); SHARED_COMPONENTS=()
     PARSED_OK=0
 
@@ -577,8 +676,25 @@ flush_pattern_category() {
             CONT_ICON[$CONT_N]="$cicon"; CONT_NAME[$CONT_N]="$cname"
             CONT_METHOD[$CONT_N]="$cmethod"; CONT_DEFAULT[$CONT_N]="$cdefault"
             CONT_DESC[$CONT_N]="$cdesc"; CONT_ENGINES[$CONT_N]="$cengines"; CONT_N=$((CONT_N + 1)) ;;
+        files)
+            # No method is read from JSON here: user files only ever go to the
+            # Trash, and that is decided by the script, not by a rules file.
+            UF_ICON[$UF_N]="$cicon"; UF_NAME[$UF_N]="$cname"; UF_DEFAULT[$UF_N]=0
+            UF_DESC[$UF_N]="$cdesc"; UF_ROOTS[$UF_N]="$croots"; UF_NAMES[$UF_N]="$cnames"
+            UF_PRUNE[$UF_N]="$cprune"; UF_MINMB[$UF_N]="$o_minmb"; UF_MINAGE[$UF_N]="$o_minage"
+            UF_MAX[$UF_N]="$o_max"; UF_DEPTH[$UF_N]="$o_depth"; UF_PERITEM[$UF_N]="$o_peritem"
+            UF_N=$((UF_N + 1)) ;;
+        simulators|brew)
+            TOOL_KIND[$TOOL_N]="$ckind"; TOOL_ICON[$TOOL_N]="$cicon"; TOOL_NAME[$TOOL_N]="$cname"
+            TOOL_DEFAULT[$TOOL_N]="$cdefault"; TOOL_DESC[$TOOL_N]="$cdesc"; TOOL_N=$((TOOL_N + 1)) ;;
         *)
-            register_paths "$cicon" "$cname" "$cmethod" "$cdefault" "$cdesc" "$cpaths" "$cprocs" ;;
+            if [ "$o_rest" = 1 ]; then
+                REST_ICON[$REST_N]="$cicon"; REST_NAME[$REST_N]="$cname"; REST_METHOD[$REST_N]="$cmethod"
+                REST_DEFAULT[$REST_N]="$cdefault"; REST_DESC[$REST_N]="$cdesc"
+                REST_PATHS[$REST_N]="$cpaths"; REST_EXCL[$REST_N]="$cexcl"; REST_N=$((REST_N + 1))
+            else
+                register_paths "$cicon" "$cname" "$cmethod" "$cdefault" "$cdesc" "$cpaths" "$cprocs" "$o_peritem" "$cexcl"
+            fi ;;
     esac
 }
 
@@ -589,6 +705,7 @@ flush_pattern_category() {
 parse_pattern_stream() {
     local file="$1"
     local ckind="" cicon="" cname="" cmethod="" cdefault="" cdesc="" cpaths="" cdirs="" cengines="" cprocs="" have=0
+    local croots="" cnames="" cexcl="" cprune="" o_peritem=0 o_rest=0 o_minmb="" o_minage="" o_max="" o_depth="" ok ov
     local line typ rest us=$'\x1f'
     while IFS= read -r line; do
         typ="${line%%$us*}"       # text before the first US separator
@@ -605,7 +722,9 @@ parse_pattern_stream() {
                 IFS=$us read -r ckind cicon cname cmethod cdefault cdesc <<EOF
 $rest
 EOF
-                have=1; cpaths=""; cdirs=""; cengines=""; cprocs="" ;;
+                have=1; cpaths=""; cdirs=""; cengines=""; cprocs=""
+                croots=""; cnames=""; cexcl=""; cprune=""; o_peritem=0; o_rest=0
+                o_minmb=""; o_minage=""; o_max=""; o_depth="" ;;
             P) cpaths="${cpaths:+$cpaths
 }$rest" ;;
             D) cdirs="${cdirs:+$cdirs
@@ -614,6 +733,24 @@ EOF
 }$rest" ;;
             PROC) cprocs="${cprocs:+$cprocs
 }$rest" ;;
+            R) croots="${croots:+$croots
+}$rest" ;;
+            N) cnames="${cnames:+$cnames
+}$rest" ;;
+            X) cexcl="${cexcl:+$cexcl
+}$rest" ;;
+            CPRUNE) cprune="${cprune:+$cprune
+}$rest" ;;
+            COPT)
+                ok="${rest%%$us*}"; ov="${rest#*$us}"
+                case "$ok" in
+                    perItem)    o_peritem=1 ;;
+                    rest)       o_rest=1 ;;
+                    minSizeMB)  o_minmb="$ov" ;;
+                    minAgeDays) o_minage="$ov" ;;
+                    maxItems)   o_max="$ov" ;;
+                    maxDepth)   o_depth="$ov" ;;
+                esac ;;
         esac
     done < <(parse_json_file "$file")
     flush_pattern_category
@@ -1131,12 +1268,237 @@ register_orphans() {
     done
 }
 
+# ---------------------------------------------------------------------------
+# The user's own large, long-unused files (kind "files")
+# see docs/DESIGN.md#user-files
+# ---------------------------------------------------------------------------
+
+# The only folders a "files" rule may scan, relative to $HOME. Fixed here, not in
+# JSON: a rules file can narrow this set, never widen it.
+USER_FILE_ROOTS="Downloads Desktop Documents Movies"
+# Directory names never descended into: repos and dependency trees (a big file
+# there belongs to a project), and macOS packages and libraries (a big file
+# inside one is part of a document — a Photos library, a VM, a Final Cut event).
+# JSON "prune" adds to this list; it cannot remove from it.
+USER_FILE_PRUNE=".git node_modules .venv venv Pods DerivedData .gradle .Trash
+*.app *.bundle *.framework *.plugin *.kext *.pkg *.mpkg *.xcarchive *.xcodeproj
+*.xcworkspace *.photoslibrary *.photolibrary *.musiclibrary *.tvlibrary
+*.imovielibrary *.fcpbundle *.logicx *.band *.lrlibrary *.lrdata *.aplibrary
+*.sparsebundle *.sparseimage *.pvm *.vmwarevm *.utm *.vbox *.qcow2"
+USER_FILE_PRUNE="$(printf '%s' "$USER_FILE_PRUNE" | tr ' ' '\n' | grep -v '^$')"
+
+# user_file_root <path> — echo which USER_FILE_ROOTS entry a path sits under,
+# lexically, or nothing.
+user_file_root() {
+    local r
+    for r in $USER_FILE_ROOTS; do
+        case "$1" in "$HOME/$r"/*) printf '%s' "$r"; return 0 ;; esac
+    done
+    return 1
+}
+
+# is_safe_user_file <path> — the gate for method "trashfile", the ONLY way cdm
+# touches a file in Downloads/Desktop/Documents/Movies. Stricter than
+# is_safe_target in every respect but the one it exists to relax: a regular file
+# (never a directory, never a symlink), under one of USER_FILE_ROOTS both
+# lexically and physically, and never inside iCloud Drive. delete_path only ever
+# moves what passes this to the Trash.
+is_safe_user_file() {
+    local p="$1" r rp
+    [ -n "$p" ] || return 1
+    case "$p" in /*) : ;; *) return 1 ;; esac
+    case "$p" in *..*|*/./*|*//*) return 1 ;; esac
+    [ -f "$p" ] || return 1
+    [ -L "$p" ] && return 1
+    r=$(user_file_root "$p") || return 1
+    rp=$(cd -P "$(dirname "$p")" 2>/dev/null && pwd -P) || return 1
+    case "$rp/" in "$HOME_P/Library/Mobile Documents/"*) return 1 ;; esac
+    case "$rp/" in "$HOME_P/$r/"*) return 0 ;; *) return 1 ;; esac
+}
+
+# file_last_used <path> — epoch seconds of the LATER of Spotlight's "last opened"
+# and the file's mtime. The later of the two, so a file counts as unused only
+# when neither says otherwise; Spotlight alone is blank for files never opened
+# (a finished download) and for volumes it does not index.
+file_last_used() {
+    local f="$1" lu e m
+    m=$(stat -f %m "$f" 2>/dev/null) || m=0
+    lu=$(mdls -raw -name kMDItemLastUsedDate "$f" 2>/dev/null)
+    case "$lu" in
+        [12][0-9][0-9][0-9]-*)
+            e=$(LC_ALL=C date -j -f '%Y-%m-%d %H:%M:%S %z' "$lu" +%s 2>/dev/null) || e=0
+            [ "${e:-0}" -gt "$m" ] && m="$e" ;;
+    esac
+    printf '%s' "$m"
+}
+
+# in_repo_or_package <file> <root> — true when any directory between <root> and
+# the file is a git checkout or a pruned package name. find already prunes those
+# by name on the way down; this re-checks the ancestors of every hit, which also
+# catches a repo whose .git find never visited (a worktree's .git FILE).
+in_repo_or_package() {
+    local d="${1%/*}" root="$2" bn x
+    while [ -n "$d" ] && [ "$d" != "$root" ] && [ "${#d}" -gt "${#root}" ]; do
+        [ -e "$d/.git" ] && return 0
+        bn="${d##*/}"
+        while IFS= read -r x; do
+            [ -n "$x" ] || continue
+            case "$bn" in $x) return 0 ;; esac
+        done <<EOF
+$USER_FILE_PRUNE
+EOF
+        d="${d%/*}"
+    done
+    return 1
+}
+
+# scan_user_files — fill one category per "files" rule: regular files of at least
+# minSizeMB under the rule's roots, not opened or modified for minAgeDays, biggest
+# first, at most maxItems. perItem gives every file its own row so each is picked
+# one by one. Rows are method "trashfile" and never pre-selected.
+scan_user_files() {
+    [ "$UF_N" -gt 0 ] || return 0
+    local now; now=$(date +%s)
+    local taken="$SCAN_DIR/uf_taken"; : > "$taken"
+    local i=0
+    while [ "$i" -lt "$UF_N" ]; do
+        local minmb="${UF_MINMB[$i]}" minage="${UF_MINAGE[$i]}" max="${UF_MAX[$i]}" depth="${UF_DEPTH[$i]}"
+        case "$minmb"  in ''|*[!0-9]*) minmb=500 ;; esac
+        case "$minage" in ''|*[!0-9]*) minage=90 ;; esac
+        case "$max"    in ''|*[!0-9]*) max=50 ;; esac
+        case "$depth"  in ''|*[!0-9]*) depth=8 ;; esac
+        [ "$minmb" -ge 1 ] || minmb=1
+        local cutoff=$((now - minage * 86400))
+
+        # find arguments as an array — no eval, so a name in JSON is only ever a
+        # -name operand.
+        local prune=() names=() x first=1
+        while IFS= read -r x; do
+            [ -n "$x" ] || continue
+            if [ "$first" -eq 1 ]; then prune=(-name "$x"); first=0; else prune=("${prune[@]}" -o -name "$x"); fi
+        done <<EOF
+$USER_FILE_PRUNE
+${UF_PRUNE[$i]}
+EOF
+        first=1
+        while IFS= read -r x; do
+            [ -n "$x" ] || continue
+            if [ "$first" -eq 1 ]; then names=(-name "$x"); first=0; else names=("${names[@]}" -o -name "$x"); fi
+        done <<EOF
+${UF_NAMES[$i]}
+EOF
+        local hits="$SCAN_DIR/uf_hits_$i"; : > "$hits"
+        local root rexp f sz lu
+        while IFS= read -r root; do
+            [ -n "$root" ] || continue
+            rexp=$(expand_tilde "$root"); rexp="${rexp%/}"
+            # Only inside the fixed set of user folders (or the folder itself).
+            user_file_root "$rexp/x" >/dev/null || continue
+            [ -d "$rexp" ] || continue
+            while IFS= read -r -d '' f; do
+                [ -f "$f" ] && [ ! -L "$f" ] || continue
+                is_safe_user_file "$f" || continue
+                in_repo_or_package "$f" "$rexp" && continue
+                grep -qxF "$f" "$taken" 2>/dev/null && continue
+                lu=$(file_last_used "$f")
+                [ "${lu:-0}" -gt 0 ] && [ "$lu" -le "$cutoff" ] || continue
+                sz=$(stat -f %z "$f" 2>/dev/null) || continue
+                printf '%s\t%s\t%s\n' "$sz" "$lu" "$f" >> "$hits"
+            done < <(
+                if [ "${#names[@]}" -gt 0 ]; then
+                    find -x "$rexp" -maxdepth "$depth" \( -type d \( "${prune[@]}" \) -prune \) -o \
+                        \( -type f -size +"${minmb}"M \( "${names[@]}" \) -print0 \) 2>/dev/null
+                else
+                    find -x "$rexp" -maxdepth "$depth" \( -type d \( "${prune[@]}" \) -prune \) -o \
+                        \( -type f -size +"${minmb}"M -print0 \) 2>/dev/null
+                fi)
+        done <<EOF
+${UF_ROOTS[$i]}
+EOF
+        local top="$SCAN_DIR/uf_top_$i"
+        LC_ALL=C sort -t "$(printf '\t')" -k1,1rn "$hits" | head -n "$max" > "$top"
+        if [ -s "$top" ]; then
+            cut -f3- "$top" >> "$taken"
+            if [ "${UF_PERITEM[$i]}" = 1 ]; then
+                while IFS="$(printf '\t')" read -r sz lu f; do
+                    add_category "${UF_ICON[$i]}" "${f##*/}" \
+                        "${UF_DESC[$i]} ${f/#$HOME/~} — last used $(epoch_day "$lu")." \
+                        "trashfile" 0 "$f"
+                    CAT_SUMMARY[$((N - 1))]="last used $(epoch_day "$lu") · $(dirname "${f/#$HOME/~}")"
+                done < "$top"
+            else
+                add_category "${UF_ICON[$i]}" "${UF_NAME[$i]}" "${UF_DESC[$i]}" \
+                    "trashfile" 0 "$(cut -f3- "$top")"
+            fi
+        fi
+        i=$((i + 1))
+    done
+}
+
+# epoch_day <epoch> — YYYY-MM-DD.
+epoch_day() { date -r "$1" +%Y-%m-%d 2>/dev/null || printf '?'; }
+
+# ---------------------------------------------------------------------------
+# Tool-managed cleanup (kind "simulators" / "brew"). Like containers, the
+# command each runs is fixed here, never taken from JSON.
+# see docs/DESIGN.md#tool-cleanup
+# ---------------------------------------------------------------------------
+
+# unavailable_simulators — echo the data dirs of every simulator whose runtime is
+# gone (Xcode upgraded past it): what `simctl delete unavailable` removes.
+unavailable_simulators() {
+    command -v xcrun >/dev/null 2>&1 || return 0
+    local base="$HOME/Library/Developer/CoreSimulator/Devices" u
+    [ -d "$base" ] || return 0
+    bounded 15 xcrun simctl list devices unavailable 2>/dev/null \
+        | grep -oE '\([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\)' \
+        | tr -d '()' | awk '!seen[$0]++' | while IFS= read -r u; do
+            [ -d "$base/$u" ] && printf '%s\n' "$base/$u"
+        done
+}
+
+# brew_reclaimable_kb — what `brew cleanup --prune=all` says it would free.
+brew_reclaimable_kb() {
+    local line
+    line=$(HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 bounded 40 brew cleanup -n --prune=all 2>/dev/null \
+        | grep -oE 'free approximately [0-9.]+[KMGT]?B' | tail -n 1)
+    human_to_kb "${line##* }"
+}
+
+scan_tools() {
+    [ "$TOOL_N" -gt 0 ] || return 0
+    local i=0 paths kb
+    while [ "$i" -lt "$TOOL_N" ]; do
+        case "${TOOL_KIND[$i]}" in
+            simulators)
+                paths=$(unavailable_simulators)
+                [ -n "$paths" ] && add_category "${TOOL_ICON[$i]}" "${TOOL_NAME[$i]}" \
+                    "${TOOL_DESC[$i]}" "simctl" "${TOOL_DEFAULT[$i]}" "$paths" ;;
+            brew)
+                if command -v brew >/dev/null 2>&1; then
+                    kb=$(brew_reclaimable_kb)
+                    if [ "${kb:-0}" -gt 0 ]; then
+                        add_category "${TOOL_ICON[$i]}" "${TOOL_NAME[$i]}" "${TOOL_DESC[$i]}" \
+                            "brew" "${TOOL_DEFAULT[$i]}" "brew"
+                        CAT_KB[$((N - 1))]="$kb"
+                    fi
+                fi ;;
+        esac
+        i=$((i + 1))
+    done
+}
+
 # build_categories — assemble the whole list (re-run after a cleanup).
 build_categories() {
     load_patterns
     scan_projects
     scan_containers
+    scan_tools
     register_orphans
+    # After the orphans: a catch-all over ~/Library/Caches or Logs must not also
+    # claim the leftover folder of an uninstalled app, which goes to the Trash.
+    register_rest
+    scan_user_files
 }
 
 # ---------------------------------------------------------------------------
@@ -1148,7 +1510,7 @@ compute_sizes_write() {
         (
             # Container categories carry a pre-computed size (their "paths" are
             # engine names, not files) — preserve it instead of du'ing.
-            if [ "${CAT_METHOD[$i]}" = "container" ]; then
+            if [ "${CAT_METHOD[$i]}" = "container" ] || [ "${CAT_METHOD[$i]}" = "brew" ]; then
                 echo "${CAT_KB[$i]}" > "$SCAN_DIR/size_$i"
             else
                 local total=0 p kb
@@ -1200,9 +1562,13 @@ prune_zero() {
 # in rules-file order. Must run after compute_sizes; re-run after CAT_KB changes.
 # see docs/DESIGN.md#sort-by-size
 sort_by_size() {
-    local order i j=0
-    order=$(for i in $(cat_indices); do printf '%s\t%s\n' "${CAT_KB[$i]}" "$i"; done \
-            | sort -rn -k1,1 -s | cut -f2)
+    local order i g j=0
+    # The user's own files sort as a block of their own after everything else,
+    # so the menu reads as caches first, then "your files" as a separate section.
+    order=$(for i in $(cat_indices); do
+                g=0; [ "${CAT_METHOD[$i]}" = "trashfile" ] && g=1
+                printf '%s\t%s\t%s\n' "$g" "${CAT_KB[$i]}" "$i"
+            done | sort -k1,1n -k2,2rn -s | cut -f3)
     local ICON=() NAME=() DESC=() METHOD=() DEFAULT=() PATHS=() KB=() SEL=() PMETHOD=() SUMMARY=() PROCS=()
     for i in $order; do
         ICON[$j]="${CAT_ICON[$i]}";       NAME[$j]="${CAT_NAME[$i]}"
@@ -1454,7 +1820,7 @@ render_menu() {
 
     local buf="" tag=""
     [ "$DRY_RUN" -eq 1 ] && tag="   ${YELLOW}DRY RUN — nothing will be deleted${NC}"
-    buf+="${BLUE}🧹 ${BOLD}CleanDevMac${NC}${BLUE} — reclaim your disk${NC}${tag}${K}${NL}"
+    buf+="${BLUE}🧹 ${BOLD}cdm${NC}${BLUE} — deep clean your Mac${NC}${tag}${K}${NL}"
     # Selected / max reclaimable / disk free, tier-fitted to this width above.
     build_status_line "$cols"
     buf+="${_SS}${K}${NL}"
@@ -1533,6 +1899,9 @@ show_details() {
     local label
     case "${CAT_METHOD[$i]}" in
         trash)      label="${YELLOW}move to Trash (recoverable)${NC}" ;;
+        trashfile)  label="${YELLOW}move YOUR file to Trash (recoverable)${NC}" ;;
+        simctl)     label="${RED}run 'xcrun simctl delete unavailable'${NC}" ;;
+        brew)       label="${RED}run 'brew cleanup --prune=all' (old versions & downloads)${NC}" ;;
         emptytrash) label="${RED}permanently empty the Trash${NC}" ;;
         container)  label="${RED}run 'system prune -af' (images/containers/build cache; volumes kept)${NC}" ;;
         project)    label="${RED}delete build/dep dirs${NC} + ${YELLOW}Trash other git-ignored (recoverable)${NC}" ;;
@@ -1541,7 +1910,7 @@ show_details() {
     printf 'Action: %s\n' "$label"
     printf 'Total:  %s\n\n' "$(human_kb "${CAT_KB[$i]}")"
     local p n=0
-    if [ "${CAT_METHOD[$i]}" = "container" ]; then
+    if [ "${CAT_METHOD[$i]}" = "container" ] || [ "${CAT_METHOD[$i]}" = "brew" ]; then
         printf '%s\n' "Engines:"
         while IFS= read -r p; do [ -n "$p" ] && printf '  %s\n' "$p"; done <<EOF
 ${CAT_PATHS[$i]}
@@ -1559,6 +1928,16 @@ EOF
             esac
             printf '  %9s  %b  %s\n' "$(human_kb "$(du_kb "$p")")" "$act" "${p/#$HOME/~}"
         done < <(paste -d $'\x1f' <(printf '%s\n' "${CAT_PMETHOD[$i]}") <(printf '%s\n' "${CAT_PATHS[$i]}"))
+    elif [ "${CAT_METHOD[$i]}" = "trashfile" ]; then
+        printf '%s\n' "Files (size · last used · path):"
+        while IFS= read -r p; do
+            [ -n "$p" ] || continue
+            n=$((n + 1))
+            [ "$n" -gt 200 ] && { printf '  %s\n' "${DIM}... and more${NC}"; break; }
+            printf '  %9s  %s  %s\n' "$(human_kb "$(du_kb "$p")")" "$(epoch_day "$(file_last_used "$p")")" "${p/#$HOME/~}"
+        done <<EOF
+${CAT_PATHS[$i]}
+EOF
     else
         printf '%s\n' "Paths:"
         while IFS= read -r p; do
@@ -1574,8 +1953,22 @@ EOF
     wait_any_key
 }
 
-toggle_all() { local t="$1" i; for i in $(cat_indices); do CAT_SEL[$i]="$t"; done; }
-select_safe() { local i; for i in $(cat_indices); do CAT_SEL[$i]="${CAT_DEFAULT[$i]}"; done; }
+# Neither bulk action ever ticks one of the user's own files (method trashfile):
+# those are chosen one row at a time, with space, or not at all.
+# see docs/DESIGN.md#user-files
+toggle_all() {
+    local t="$1" i
+    for i in $(cat_indices); do
+        if [ "$t" = 1 ] && [ "${CAT_METHOD[$i]}" = "trashfile" ]; then continue; fi
+        CAT_SEL[$i]="$t"
+    done
+}
+select_safe() {
+    local i
+    for i in $(cat_indices); do
+        if [ "${CAT_METHOD[$i]}" = "trashfile" ]; then CAT_SEL[$i]=0; else CAT_SEL[$i]="${CAT_DEFAULT[$i]}"; fi
+    done
+}
 
 # running_selected_apps — echo a comma-separated list of the apps that are both
 # running and own a cache the user selected, so the confirm can name them. The
@@ -1623,6 +2016,14 @@ delete_path() {
     local method="$1" p="$2"
     # Already gone (e.g. removed by an overlapping category earlier in this run).
     [ -e "$p" ] || return 0
+    # The user's own files have their own, stricter gate, and only one outcome:
+    # the Trash. is_safe_target refuses these folders outright, by design.
+    if [ "$method" = "trashfile" ]; then
+        if ! is_safe_user_file "$p"; then echo "${YELLOW}  skip (unsafe): ${p}${NC}"; return 1; fi
+        if move_to_trash "$p"; then echo "${GREEN}  trashed:${NC} ${p/#$HOME/~}"
+        else echo "${RED}  failed to trash:${NC} ${p/#$HOME/~}"; fi
+        return 0
+    fi
     if ! is_safe_target "$p"; then
         echo "${YELLOW}  skip (unsafe): ${p}${NC}"; return 1
     fi
@@ -1661,8 +2062,9 @@ print_plan() {
         [ "${CAT_SEL[$i]}" = "1" ] || continue
         local tag
         case "${CAT_METHOD[$i]}" in
-            trash)      tag="${YELLOW}→ Trash   ${NC}" ;;
+            trash|trashfile) tag="${YELLOW}→ Trash   ${NC}" ;;
             emptytrash) tag="${RED}EMPTY TRASH${NC}"; PLAN_HAS_PERMANENT=1 ;;
+            simctl|brew) tag="${RED}PRUNE     ${NC}"; PLAN_HAS_PERMANENT=1 ;;
             container)  tag="${RED}PRUNE     ${NC}"; PLAN_HAS_PERMANENT=1 ;;
             project)
                 # A project deletes regenerable dirs and/or trashes git-ignored:
@@ -1758,7 +2160,7 @@ run_cleanup() {
     rotate_log
     {
         echo "=================================================="
-        echo "CleanDevMac run: $(date)"
+        echo "cdm run: $(date)"
         echo "=================================================="
         local i method p
         for i in $(cat_indices); do
@@ -1767,6 +2169,14 @@ run_cleanup() {
             echo "${BLUE}▸ ${CAT_NAME[$i]}${NC}"
             if [ "$method" = "emptytrash" ]; then empty_trash; continue; fi
             if [ "$method" = "container" ]; then run_container_prune "${CAT_PATHS[$i]}"; continue; fi
+            if [ "$method" = "simctl" ]; then
+                echo "${DIM}  \$ xcrun simctl delete unavailable${NC}"
+                xcrun simctl delete unavailable 2>&1 | sed 's/^/    /'; continue
+            fi
+            if [ "$method" = "brew" ]; then
+                echo "${DIM}  \$ brew cleanup --prune=all${NC}"
+                HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 brew cleanup --prune=all 2>&1 | sed 's/^/    /'; continue
+            fi
             if [ "$method" = "project" ]; then
                 # Per-project categories carry a per-path method (rm vs trash);
                 # pair each path with its method (US-joined) and act accordingly.
@@ -1805,17 +2215,13 @@ EOF
     local i
     for i in $(cat_indices); do
         [ "${CAT_SEL[$i]}" = "1" ] || continue
-        if [ "${CAT_METHOD[$i]}" = "trash" ] \
+        if [ "${CAT_METHOD[$i]}" = "trash" ] || [ "${CAT_METHOD[$i]}" = "trashfile" ] \
            || { [ "${CAT_METHOD[$i]}" = "project" ] && printf '%s\n' "${CAT_PMETHOD[$i]}" | grep -qx 'trash'; }; then
             echo "Items moved to the Trash can be restored from there."
             break
         fi
     done
     echo "Log: ${YELLOW}${LOG_FILE}${NC}"
-    # Shown only here — after a clean that actually freed something. Never on a
-    # plain scan, a dry run, or --help-less startup: asking for money before
-    # delivering anything is how a good tool starts feeling like adware.
-    echo "${DIM}Got your disk back? ${NC}${CYAN}${DONATE_URL}${NC}"
     return 0
 }
 
@@ -1848,54 +2254,34 @@ offer_project_scan() {
     esac
 }
 
-# open_donate — hand DONATE_URL to the browser, on an explicit keypress and
-# nowhere else. cdm still makes no network call of its own: open(1) does, on the
-# user's behalf, exactly as clicking the printed link would. Prints the URL
-# instead when open(1) is unavailable or refuses.
-# see docs/DESIGN.md#donate-link
-open_donate() {
-    if open "$DONATE_URL" >/dev/null 2>&1; then
-        printf '%b\n' "  ${GREEN}Opened in your browser — thank you!${NC} ${CYAN}${DONATE_URL}${NC}"
-    else
-        printf '%b\n' "  ${CYAN}${DONATE_URL}${NC}"
-    fi
-}
-
-# after_clean_menu — what now, once a clean has run: rescan (r), open the donate
-# link (b), or quit. Returns 0 to rescan, 1 to quit; donating is not an answer
-# to the question, so it re-asks. Only reached on run_cleanup's success path,
-# which is the same gate the donate line itself sits behind — never on a dry run.
+# after_clean_menu — what now, once a clean has run: rescan (r) or quit. Returns
+# 0 to rescan, 1 to quit. Only reached on run_cleanup's success path — never on a
+# dry run.
 # see docs/DESIGN.md#after-clean-menu
 after_clean_menu() {
     local ko kc reply
     # Same caps as the menu's keys line: reverse video when colored, brackets
     # under --no-color.
     if [ -n "$REV" ]; then ko="${REV} "; kc=" ${NC}"; else ko="["; kc="]"; fi
-    while true; do
-        printf '\n'
-        printf '%b\n' "  ${BOLD}What next?${NC}"
-        printf '%b'   "  ${ko}r${kc} ${DIM}rescan${NC}   ${ko}b${kc} ${DIM}buy me a coffee${NC}   ${ko}q${kc} ${DIM}quit (default)${NC} "
-        reply=""
-        # Retry on a SIGWINCH-interrupted read, as every other prompt does, so a
-        # resize is not mistaken for an answer. A real failure is EOF — no
-        # terminal, or stdin closed — and takes the default.
-        while ! IFS= read -r -s -n 1 reply <&3 2>/dev/null; do
-            [ "${NEED_REDRAW:-0}" = 1 ] || { printf '\n'; return 1; }
-            NEED_REDRAW=0
-        done
-        printf '\n'
-        case "$reply" in
-            r|R) return 0 ;;
-            # `b`, not `d`: the menu already spends `d` on details, and one
-            # letter meaning two things across the tool's two prompts is the
-            # kind of wart a keymap never recovers from.
-            b|B) open_donate ;;
-            # Enter, q, Esc, anything else: quit. Nothing is lost by quitting
-            # here — the clean has already run — so an unrecognized key takes
-            # the default rather than nagging.
-            *)   return 1 ;;
-        esac
+    printf '\n'
+    printf '%b\n' "  ${BOLD}What next?${NC}"
+    printf '%b'   "  ${ko}r${kc} ${DIM}rescan${NC}   ${ko}q${kc} ${DIM}quit (default)${NC} "
+    reply=""
+    # Retry on a SIGWINCH-interrupted read, as every other prompt does, so a
+    # resize is not mistaken for an answer. A real failure is EOF — no
+    # terminal, or stdin closed — and takes the default.
+    while ! IFS= read -r -s -n 1 reply <&3 2>/dev/null; do
+        [ "${NEED_REDRAW:-0}" = 1 ] || { printf '\n'; return 1; }
+        NEED_REDRAW=0
     done
+    printf '\n'
+    case "$reply" in
+        r|R) return 0 ;;
+        # Enter, q, Esc, anything else: quit. Nothing is lost by quitting
+        # here — the clean has already run — so an unrecognized key takes
+        # the default rather than nagging.
+        *)   return 1 ;;
+    esac
 }
 
 # Test hook: load functions only when sourced with CDM_LIB=1.
@@ -1929,7 +2315,7 @@ wait
 if [ "$PROJECTS_ENABLED" -eq 1 ]; then
     printf '%s' " ${CYAN}Scanning caches & code repos...${NC} "
 else
-    printf '%s' " ${CYAN}Scanning caches...${NC} "
+    printf '%s' " ${CYAN}Scanning caches & large old files...${NC} "
 fi
 build_categories
 printf '\r\033[K'
@@ -2024,7 +2410,7 @@ while true; do
             # run_cleanup refuses to delete under --dry-run but still prints the
             # plan, so `c` shows what would be freed instead of doing nothing.
             # Its output is the receipt — what went, what it freed, where the log
-            # is, and the donate line — so it has to survive the run.
+            # is — so it has to survive the run.
             leave_tui
             if run_cleanup; then
                 # Quitting is the default, so the run ends on the receipt rather

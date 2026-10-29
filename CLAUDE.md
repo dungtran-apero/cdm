@@ -4,8 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-CleanDevMac (`cdm`) is a single ~1700-line bash script that reclaims disk space on macOS from
-developer caches, build artifacts, per-repo project junk, Docker/Podman, and orphaned app data.
+`cdm` is a single ~2300-line bash script that deep-cleans macOS: developer caches, build artifacts,
+per-repo project junk, Docker/Podman, orphaned app data, opt-in deep-clean rows (catch-all caches,
+device backups, simulators, Homebrew) and the user's own large, long-unused files.
 `cdm` is the whole program — `rules/*.json` is its data. There is no build step and no dependency
 manifest. Tests live in `tests/` and are plain bash with no framework behind them (see Commands).
 
@@ -18,7 +19,7 @@ back into `cdm`.
 Users run it by piping a GitHub release asset straight into bash:
 
 ```bash
-curl -sSL https://github.com/cleandevmac/cdm/releases/latest/download/cdm | bash
+curl -sSL https://github.com/dungtran-apero/cdm/releases/latest/download/cdm | bash
 ```
 
 That distribution model drives most of the non-obvious decisions below.
@@ -95,7 +96,7 @@ expected, not a bug: bash exits without draining the pipe and curl takes SIGPIPE
 
 `rules/index.json` is the manifest — it lists which files load and in what order. Each pattern file
 contributes categories. Adding or removing cleanup targets should be a JSON edit, **not** a code
-change; the README and landing page both promise this, so preserve it.
+change; the README promises this, so preserve it.
 
 A category object is `icon`, `name`, `desc`, `method`, `default`, `paths`, and optionally `procs`:
 
@@ -115,7 +116,7 @@ writing docs, read a rule file first — this has been documented wrong before.
 
 ### Rule resolution order (`resolve_patterns`)
 
-`--patterns` → `<script-dir>/rules` → `<script-dir>/../rules` → `~/.cleandevmac/rules` →
+`--patterns` → `<script-dir>/rules` → `<script-dir>/../rules` → `~/.cdm/rules` → `~/.cleandevmac/rules` (older installs) →
 `$REMOTE_BASE` (raw main on GitHub).
 
 When piped from curl, **`BASH_SOURCE` is unset** (`$0` is `bash`), so the `*/*` case never matches,
@@ -304,15 +305,14 @@ name, and the README's downloads badge counts fetches of that asset.
   citations rotted: they were 38–90 lines stale before anyone noticed, because nothing verifies a
   number in a comment. Say `is_safe_target()` instead — it survives every edit above it.
 - Rules are fetched from raw `main` at runtime, so a rules change is live for piped users the moment
-  it merges — before any release. Landing-page and README claims about what `cdm` cleans must track
+  it merges — before any release. README claims about what `cdm` cleans must track
   `rules/`.
-- The tool makes **no network calls** other than fetching its own rule JSON. There is no telemetry
-  and no phone-home. The one exception is not a request cdm makes: pressing `b` at the post-clean
-  prompt hands the donate URL to `open(1)`, i.e. to the user's browser, on an explicit keypress.
-  Keep it that way — nothing is ever *sent* anywhere. See `docs/DESIGN.md#donate-link`.
-- The donate URL appears only in `--help` and after a clean that actually freed something (the
-  printed line, and the `b` key on the prompt that follows it) — never on a scan or a dry run.
-- Every clean appends a receipt to `~/.cleandevmac/clean.log`; a scan or a `--dry-run` never writes
+- The tool makes **no network calls** other than fetching its own rule JSON. There is no telemetry,
+  no phone-home, and no donate/sponsor link anywhere. Keep it that way.
+- The user's own files (kind `files`, method `trashfile`) go through `is_safe_user_file`, never
+  `is_safe_target`, and only ever to the Trash; `a`, `s` and `-y` never select them. Treat that gate
+  like `is_safe_target`: high-risk. See `docs/DESIGN.md#user-files`.
+- Every clean appends a receipt to `~/.cdm/clean.log`; a scan or a `--dry-run` never writes
   to it. `rotate_log` caps it at 1 MiB, keeping the newest 256 KiB — the tool that reclaims disk has
   no business being the thing quietly consuming it. Same reasoning behind `sweep_stale_scan_dirs`:
   `cleanup_on_exit` removes this run's `SCAN_DIR`, but no `EXIT` trap runs when the process is
@@ -321,9 +321,6 @@ name, and the README's downloads badge counts fetches of that asset.
   `is_safe_target` — it cannot, since `$TMPDIR` is not under `$HOME` — so its fixed-width glob over
   cdm's own mktemp template *is* the safety boundary. Nothing rule-derived reaches it. Widen that
   glob and `tests/test_scan_dir_sweep.sh` fails.
-- The landing page lives in a separate repo (`cleandevmac/cleandevmac.github.io`) and hardcodes the
-  run command, the rule schema, and the TUI keybindings. Changing any of those here means updating
-  it there.
 - Nothing "installs" `cdm` — the pipe runs it and leaves nothing behind. Only the optional
   save-to-`PATH` recipe in the README puts a file on disk, and that section is the only place the
   word *install* belongs.
