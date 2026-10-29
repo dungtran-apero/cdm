@@ -2,8 +2,7 @@
 
 # cdm — https://github.com/dungtran-apero/cdm
 # Interactive macOS deep clean: developer caches, build artifacts, project junk,
-# leftover data from uninstalled apps, and large files you have not opened in a
-# long time. Nothing is deleted without an itemized
+# leftover data from uninstalled apps, and large files in your home folder. Nothing is deleted without an itemized
 # confirmation; --dry-run only looks. What it cleans: docs/DESIGN.md#what-cdm-is
 
 set -u
@@ -36,7 +35,7 @@ PATTERNS_SRC="${CDM_PATTERNS:-}"            # override: a local dir or a base UR
 
 usage() {
     cat <<EOF
-${CYAN}cdm${NC} — deep clean your Mac: dev caches, project junk, leftover app data & old large files.
+${CYAN}cdm${NC} — deep clean your Mac: dev caches, project junk, leftover app data & large files.
 
 ${YELLOW}Usage:${NC}
   cdm [options]
@@ -72,9 +71,10 @@ ${YELLOW}What it cleans (all described by editable JSON pattern files):${NC}
   • Leftover data from apps you have uninstalled (moved to Trash, recoverable).
   • Deep clean: every other user cache/log, iPhone backups & firmware, dead
     simulators, Android images, Homebrew leftovers — all opt-in.
-  • Large files in Downloads/Desktop/Documents/Movies you have not opened in
-    months, one row per file with its last-used date. Never pre-selected, never
-    picked by 'a' or -y — you tick each one, and it goes to the Trash.
+  • Every large file (100 MB+) in your home folder, outside Library and
+    hidden folders, one row per file with its last-used date. Never
+    pre-selected, never picked by 'a' or -y — you tick each one, and it goes
+    to the Trash.
 
 ${YELLOW}Safety:${NC}
   • Caches & build output regenerate — removing them costs only a re-download/build.
@@ -571,9 +571,14 @@ resolve_patterns() {
     if [ -n "$PATTERNS_SRC" ]; then
         base="$PATTERNS_SRC"
     else
-        local self_dir=""
-        case "${BASH_SOURCE:-}" in
-            */*) self_dir=$(cd "$(dirname "${BASH_SOURCE}")" 2>/dev/null && pwd) ;;
+        local self_dir="" src="${BASH_SOURCE:-}" lnk
+        # Follow a symlinked install (~/.local/bin/cdm -> checkout) to the checkout.
+        while [ -n "$src" ] && [ -L "$src" ]; do
+            lnk=$(readlink "$src") || break
+            case "$lnk" in /*) src="$lnk" ;; *) src="$(dirname "$src")/$lnk" ;; esac
+        done
+        case "$src" in
+            */*) self_dir=$(cd "$(dirname "$src")" 2>/dev/null && pwd) ;;
         esac
         if [ -n "$self_dir" ] && [ -f "$self_dir/rules/index.json" ]; then
             base="$self_dir/rules"
@@ -1269,13 +1274,14 @@ register_orphans() {
 }
 
 # ---------------------------------------------------------------------------
-# The user's own large, long-unused files (kind "files")
+# The user's own large files (kind "files")
 # see docs/DESIGN.md#user-files
 # ---------------------------------------------------------------------------
 
-# The only folders a "files" rule may scan, relative to $HOME. Fixed here, not in
-# JSON: a rules file can narrow this set, never widen it.
-USER_FILE_ROOTS="Downloads Desktop Documents Movies"
+# A "files" rule may scan all of $HOME except these top-level names (and every
+# hidden one). Fixed here, not in JSON: a rules file can narrow the scan, never
+# widen it. see docs/DESIGN.md#user-files
+USER_FILE_HOME_EXCLUDE="Library Applications OrbStack"
 # Directory names never descended into: repos and dependency trees (a big file
 # there belongs to a project), and macOS packages and libraries (a big file
 # inside one is part of a document — a Photos library, a VM, a Final Cut event).
@@ -1287,20 +1293,24 @@ USER_FILE_PRUNE=".git node_modules .venv venv Pods DerivedData .gradle .Trash
 *.sparsebundle *.sparseimage *.pvm *.vmwarevm *.utm *.vbox *.qcow2"
 USER_FILE_PRUNE="$(printf '%s' "$USER_FILE_PRUNE" | tr ' ' '\n' | grep -v '^$')"
 
-# user_file_root <path> — echo which USER_FILE_ROOTS entry a path sits under,
-# lexically, or nothing.
+# user_file_root <path> — echo the top-level folder under $HOME a path sits in
+# lexically ("." for a file directly in $HOME), or nothing when it is outside
+# $HOME, hidden at the top level, or in USER_FILE_HOME_EXCLUDE.
 user_file_root() {
-    local r
-    for r in $USER_FILE_ROOTS; do
-        case "$1" in "$HOME/$r"/*) printf '%s' "$r"; return 0 ;; esac
-    done
-    return 1
+    local rest r x
+    case "$1" in "$HOME"/?*) : ;; *) return 1 ;; esac
+    rest="${1#"$HOME"/}"
+    case "$rest" in .*) return 1 ;; esac
+    r="${rest%%/*}"
+    [ "$r" = "$rest" ] && { printf '.'; return 0; }
+    for x in $USER_FILE_HOME_EXCLUDE; do [ "$r" = "$x" ] && return 1; done
+    printf '%s' "$r"
 }
 
 # is_safe_user_file <path> — the gate for method "trashfile", the ONLY way cdm
-# touches a file in Downloads/Desktop/Documents/Movies. Stricter than
-# is_safe_target in every respect but the one it exists to relax: a regular file
-# (never a directory, never a symlink), under one of USER_FILE_ROOTS both
+# touches a file of the user's own. Stricter than is_safe_target in every
+# respect but the one it exists to relax: a regular file (never a directory,
+# never a symlink), in the same top-level $HOME folder (user_file_root) both
 # lexically and physically, and never inside iCloud Drive. delete_path only ever
 # moves what passes this to the Trash.
 is_safe_user_file() {
@@ -1313,6 +1323,7 @@ is_safe_user_file() {
     r=$(user_file_root "$p") || return 1
     rp=$(cd -P "$(dirname "$p")" 2>/dev/null && pwd -P) || return 1
     case "$rp/" in "$HOME_P/Library/Mobile Documents/"*) return 1 ;; esac
+    if [ "$r" = "." ]; then [ "$rp" = "$HOME_P" ]; return; fi
     case "$rp/" in "$HOME_P/$r/"*) return 0 ;; *) return 1 ;; esac
 }
 
@@ -1392,9 +1403,13 @@ EOF
         while IFS= read -r root; do
             [ -n "$root" ] || continue
             rexp=$(expand_tilde "$root"); rexp="${rexp%/}"
-            # Only inside the fixed set of user folders (or the folder itself).
+            # Only inside $HOME, never in an excluded top-level folder.
             user_file_root "$rexp/x" >/dev/null || continue
             [ -d "$rexp" ] || continue
+            # Hidden folders at any depth (tool state, .Trash) and the excluded
+            # top-level ones are pruned by path, on top of the name list.
+            local hprune=(-path "$rexp/*/.*" -o -path "$rexp/.*") hx
+            for hx in $USER_FILE_HOME_EXCLUDE; do hprune=("${hprune[@]}" -o -path "$HOME/$hx"); done
             while IFS= read -r -d '' f; do
                 [ -f "$f" ] && [ ! -L "$f" ] || continue
                 is_safe_user_file "$f" || continue
@@ -1406,10 +1421,10 @@ EOF
                 printf '%s\t%s\t%s\n' "$sz" "$lu" "$f" >> "$hits"
             done < <(
                 if [ "${#names[@]}" -gt 0 ]; then
-                    find -x "$rexp" -maxdepth "$depth" \( -type d \( "${prune[@]}" \) -prune \) -o \
+                    find -x "$rexp" -maxdepth "$depth" \( -type d \( "${prune[@]}" -o "${hprune[@]}" \) -prune \) -o \
                         \( -type f -size +"${minmb}"M \( "${names[@]}" \) -print0 \) 2>/dev/null
                 else
-                    find -x "$rexp" -maxdepth "$depth" \( -type d \( "${prune[@]}" \) -prune \) -o \
+                    find -x "$rexp" -maxdepth "$depth" \( -type d \( "${prune[@]}" -o "${hprune[@]}" \) -prune \) -o \
                         \( -type f -size +"${minmb}"M -print0 \) 2>/dev/null
                 fi)
         done <<EOF

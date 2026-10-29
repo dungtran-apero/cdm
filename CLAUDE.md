@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `cdm` is a single ~2300-line bash script that deep-cleans macOS: developer caches, build artifacts,
 per-repo project junk, Docker/Podman, orphaned app data, opt-in deep-clean rows (catch-all caches,
-device backups, simulators, Homebrew) and the user's own large, long-unused files.
+device backups, simulators, Homebrew) and the user's own large files.
 `cdm` is the whole program — `rules/*.json` is its data. There is no build step and no dependency
 manifest. Tests live in `tests/` and are plain bash with no framework behind them (see Commands).
 
