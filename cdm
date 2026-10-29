@@ -71,10 +71,12 @@ ${YELLOW}What it cleans (all described by editable JSON pattern files):${NC}
   • Leftover data from apps you have uninstalled (moved to Trash, recoverable).
   • Deep clean: every other user cache/log, iPhone backups & firmware, dead
     simulators, Android images, Homebrew leftovers — all opt-in.
-  • Every large file (100 MB+) in your home folder, outside Library and
-    hidden folders, one row per file with its last-used date. Never
+  • Every old file (50 MB+, unused for 30+ days) and large file (100 MB+)
+    in your home folder, outside Library and hidden folders, one row per
+    file with its last-used date. Never
     pre-selected, never picked by 'a' or -y — you tick each one, and it goes
     to the Trash.
+  • A map of hidden folders of 1 GB+ (press m) — shown only, never deleted.
 
 ${YELLOW}Safety:${NC}
   • Caches & build output regenerate — removing them costs only a re-download/build.
@@ -438,10 +440,12 @@ add_category() { # icon name desc method default paths [pmethods] [procs]
 # register_paths — expand a newline-separated path list (~ and * globs) into the
 # concrete, existing, non-empty, de-duplicated paths, then add the category.
 # [peritem]=1 adds one row per path instead (see item_label); [excl] is a
-# newline-separated list of basename globs to leave out.
+# newline-separated list of basename globs to leave out; [minage] keeps only
+# matches with nothing inside modified for that many days (see is_stale).
 register_paths() {
     local icon="$1" name="$2" method="$3" default="$4" desc="$5" pathlist="$6" procs="${7:-}"
-    local peritem="${8:-0}" excl="${9:-}"
+    local peritem="${8:-0}" excl="${9:-}" minage="${10:-}"
+    case "$minage" in ''|*[!0-9]*) minage=0 ;; esac
     local found="" labels="" pat m pre x skip
     while IFS= read -r pat; do
         [ -n "$pat" ] || continue
@@ -474,6 +478,7 @@ $excl
 EOF
                 [ "$skip" -eq 1 ] && { IFS=; continue; }
             fi
+            [ "$minage" -gt 0 ] && ! is_stale "$m" "$minage" && { IFS=; continue; }
             found="${found:+$found
 }$m"
             labels="${labels:+$labels
@@ -499,6 +504,14 @@ $labels
 EOF4
 $found
 EOF
+}
+
+# is_stale <path> <days> — true when neither the path nor anything inside it was
+# modified in the last <days> days. Stops at the first recent entry, so a busy
+# folder costs one hit, not a full walk. see docs/DESIGN.md#min-age-paths
+is_stale() {
+    [ -n "$(find "$1" -mtime -"$2" -print -quit 2>/dev/null)" ] && return 1
+    return 0
 }
 
 # item_label <path> <fallback> — the name a per-item row shows. An iPhone/iPad
@@ -698,7 +711,7 @@ flush_pattern_category() {
                 REST_DEFAULT[$REST_N]="$cdefault"; REST_DESC[$REST_N]="$cdesc"
                 REST_PATHS[$REST_N]="$cpaths"; REST_EXCL[$REST_N]="$cexcl"; REST_N=$((REST_N + 1))
             else
-                register_paths "$cicon" "$cname" "$cmethod" "$cdefault" "$cdesc" "$cpaths" "$cprocs" "$o_peritem" "$cexcl"
+                register_paths "$cicon" "$cname" "$cmethod" "$cdefault" "$cdesc" "$cpaths" "$cprocs" "$o_peritem" "$cexcl" "$o_minage"
             fi ;;
     esac
 }
@@ -1454,6 +1467,48 @@ EOF
 epoch_day() { date -r "$1" +%Y-%m-%d 2>/dev/null || printf '?'; }
 
 # ---------------------------------------------------------------------------
+# Hidden-folder map: a report, never a category — nothing here is deleted.
+# see docs/DESIGN.md#hidden-map
+# ---------------------------------------------------------------------------
+HIDDEN_MAP_MIN_KB=1048576   # 1 GB
+
+# scan_hidden_map — size every top-level hidden folder of $HOME concurrently and
+# write those of at least HIDDEN_MAP_MIN_KB to $SCAN_DIR/hidden_map as
+# "kb<TAB>path", biggest first. Meant to run in the background during the scan.
+scan_hidden_map() {
+    local out="$SCAN_DIR/hidden_map" d n=0
+    : > "$out.tmp"
+    for d in "$HOME"/.[!.]* "$HOME"/..?*; do
+        [ -d "$d" ] && [ ! -L "$d" ] || continue
+        ( printf '%s\t%s\n' "$(du_kb "$d")" "$d" >> "$out.tmp" ) &
+        n=$((n + 1)); [ $((n % 16)) -eq 0 ] && wait
+    done
+    wait
+    awk -F '\t' -v m="$HIDDEN_MAP_MIN_KB" '$1 >= m' "$out.tmp" \
+        | LC_ALL=C sort -t "$(printf '\t')" -k1,1rn > "$out"
+    rm -f "$out.tmp"
+}
+
+# print_hidden_map — print what scan_hidden_map found, tagging a folder when a
+# menu row reaches inside it. Returns 1 (printing nothing) when there is none.
+print_hidden_map() {
+    local f="$SCAN_DIR/hidden_map" kb d tag i
+    [ -s "$f" ] || return 1
+    echo " ${BLUE}🗺️  Hidden folders ≥ 1 GB${NC} ${DIM}— where the rest of your space is. Shown only: cdm deletes nothing here unless a menu row names it.${NC}"
+    while IFS="$(printf '\t')" read -r kb d; do
+        tag=""
+        for i in $(cat_indices); do
+            case "
+${CAT_PATHS[$i]}" in *"
+$d/"*|*"
+$d
+"*) tag=" ${GREEN}· has menu rows${NC}"; break ;; esac
+        done
+        printf '   %9s  %s%s\n' "$(human_kb "$kb")" "~${d#"$HOME"}" "$tag"
+    done < "$f"
+}
+
+# ---------------------------------------------------------------------------
 # Tool-managed cleanup (kind "simulators" / "brew"). Like containers, the
 # command each runs is fixed here, never taken from JSON.
 # see docs/DESIGN.md#tool-cleanup
@@ -1732,11 +1787,11 @@ build_keys_line() {
     local cols="$1" tier
     if [ -n "$REV" ]; then _ko="${REV} "; _kc=" ${NC}"; else _ko="["; _kc="]"; fi
     for tier in 1 2 3; do
-        local sp="Space" en="Enter" mv="move" tg="toggle" asn="all/safe/none" cl="clean" qt="quit" dt
+        local sp="Space" en="Enter" mv="move" tg="toggle" asn="all/safe/none" cl="clean" qt="quit" hm="hidden" dt
         if [ "$DRY_RUN" -eq 1 ]; then dt="paths"; else dt="details"; fi
         case "$tier" in
-            2) sp="Spc"; en="↵"; mv=""; dt="" ;;
-            3) sp="Spc"; en="↵"; mv=""; dt=""; tg=""; asn=""; cl=""; qt="" ;;
+            2) sp="Spc"; en="↵"; mv=""; dt=""; hm="" ;;
+            3) sp="Spc"; en="↵"; mv=""; dt=""; tg=""; asn=""; cl=""; qt=""; hm="" ;;
         esac
         _S=""; _P=""
         _k_add "↑↓" "$mv"
@@ -1746,6 +1801,7 @@ build_keys_line() {
         _P="$_P ·  a / s / n "
         [ -n "$asn" ] && { _S="$_S ${DIM}${asn}${NC}"; _P="$_P ${asn}"; }
         _k_add "$en" "$dt"
+        _k_add "m" "$hm"
         # `c` is absent under --dry-run: run_cleanup would refuse to delete anyway.
         [ "$DRY_RUN" -eq 1 ] || _k_add "c" "$cl"
         _k_add "q" "$qt"
@@ -2327,6 +2383,9 @@ build_installed_set &
 spinner_scan $! "Analyzing installed apps & leftover data..."
 wait
 
+# Sized alongside the scan; compute_sizes' wait collects it. see docs/DESIGN.md#hidden-map
+scan_hidden_map &
+
 if [ "$PROJECTS_ENABLED" -eq 1 ]; then
     printf '%s' " ${CYAN}Scanning caches & code repos...${NC} "
 else
@@ -2354,14 +2413,17 @@ if [ "$NON_INTERACTIVE" -eq 0 ] && [ "$PROJECTS_ENABLED" -eq 0 ]; then
     offer_project_scan
 fi
 
+wait
 if [ "$N" -eq 0 ]; then
     echo "${GREEN}Nothing to reclaim — everything is already clean.${NC}"
+    print_hidden_map
     exit 0
 fi
 
 # The scan's headline: everything found, before any selection. Printed after the
 # project-scan offer, so accepting it is counted here rather than reported stale.
 echo " ${GREEN}♻️  Max reclaimable:${NC} ${BOLD}${GREEN}$(human_kb "$(total_kb)")${NC} ${DIM}across ${N} categories${NC}"
+print_hidden_map
 
 # ---- Non-interactive -------------------------------------------------------
 if [ "$ASSUME_YES" -eq 1 ]; then
@@ -2406,6 +2468,7 @@ while true; do
         case "$key" in
             k|K) action="UP" ;; j|J) action="DOWN" ;;
             d|D) action="DETAILS" ;; a|A) action="ALL" ;;
+            m|M) action="MAP" ;;
             s|S) action="SAFE" ;; n|N) action="NONE" ;;
             c|C) action="CLEAN" ;; q|Q|e|E) action="QUIT" ;;
         esac
@@ -2421,6 +2484,11 @@ while true; do
         # user needs to be able to scroll back through them. On the alternate
         # screen there is no scrollback to reach.
         DETAILS) leave_tui; show_details; enter_tui ;;
+        MAP)
+            leave_tui; printf '\033[H\033[2J'
+            print_hidden_map || echo " ${DIM}No hidden folder in your home is 1 GB or larger.${NC}"
+            printf '\n%s' "${DIM}Press any key to return...${NC}"
+            wait_any_key; enter_tui ;;
         CLEAN)
             # run_cleanup refuses to delete under --dry-run but still prints the
             # plan, so `c` shows what would be freed instead of doing nothing.
@@ -2434,6 +2502,7 @@ while true; do
                     echo "${BLUE}Goodbye!${NC}"; exit 0
                 fi
                 printf '%s' " ${CYAN}Rescanning...${NC} "
+                scan_hidden_map &
                 build_categories; printf '\r\033[K'
                 [ "$N" -eq 0 ] && { echo "${GREEN}All clean!${NC}"; exit 0; }
                 compute_sizes; prune_zero; sort_by_size
