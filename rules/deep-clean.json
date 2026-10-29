@@ -1,6 +1,6 @@
 {
   "title": "Deep clean",
-  "_comment": "Everything past dev caches. Nothing here is pre-selected. 'rest': true makes a catch-all category skip every path another rule already names (same path, inside it, or containing it), so ~/Library/Caches/* never double-counts. 'exclude' lists basename globs to leave out. 'perItem': true shows one row per matched path, so each backup / emulator image is picked on its own. kind 'simulators' and 'brew' run a fixed command the script hard-codes. kind 'files' lists the user's own large, long-unused files: the script, not this file, decides they only ever go to the Trash, only from Downloads/Desktop/Documents/Movies, and are never pre-selected or picked by 'a' / -y.",
+  "_comment": "Everything past dev caches. Nothing here is pre-selected. 'rest': true makes a catch-all category skip every path another rule already names (same path, inside it, or containing it), so ~/Library/Caches/* never double-counts. 'exclude' lists basename globs to leave out. 'perItem': true shows one row per matched path, so each backup / emulator image is picked on its own. 'minAgeDays' on a path rule keeps only matches with nothing inside modified for that many days. kind 'simulators' and 'brew' run a fixed command the script hard-codes. kind 'files' lists the user's own large, long-unused files: the script, not this file, decides they only ever go to the Trash, only from non-hidden folders of $HOME outside Library, and are never pre-selected or picked by 'a' / -y.",
   "categories": [
     {
       "icon": "🗄️",
@@ -97,6 +97,34 @@
       "paths": ["~/.android/avd/*.avd"]
     },
     {
+      "icon": "🧊",
+      "name": "Kotlin/Native toolchain",
+      "method": "rm",
+      "default": false,
+      "perItem": true,
+      "desc": "A Kotlin/Native compiler or its LLVM/sysroot dependencies in ~/.konan — re-downloaded by the next KMP build that needs that version. Keep the one your projects use now.",
+      "paths": ["~/.konan/kotlin-native-prebuilt-*", "~/.konan/dependencies"]
+    },
+    {
+      "icon": "🎭",
+      "name": "Old Maestro test runs",
+      "method": "rm",
+      "default": false,
+      "minAgeDays": 30,
+      "desc": "Logs and screenshots of Maestro test runs in ~/.maestro/tests untouched for 30+ days — debug output, never read back by Maestro.",
+      "paths": ["~/.maestro/tests/*"]
+    },
+    {
+      "icon": "🌳",
+      "name": "Stale shein worktree",
+      "method": "trash",
+      "default": false,
+      "perItem": true,
+      "minAgeDays": 30,
+      "desc": "A shein order worktree with nothing modified for 30+ days. Moved to the Trash (recoverable); run 'git worktree prune' in its repo afterwards.",
+      "paths": ["~/.shein-worktrees/*"]
+    },
+    {
       "kind": "brew",
       "icon": "🍺",
       "name": "Homebrew old versions",
@@ -114,6 +142,18 @@
       "minAgeDays": 30,
       "maxItems": 200,
       "maxDepth": 3
+    },
+    {
+      "kind": "files",
+      "icon": "🕸️",
+      "name": "Old file",
+      "perItem": true,
+      "desc": "Your file (50 MB+), not opened or modified for 30+ days:",
+      "roots": ["~"],
+      "minSizeMB": 50,
+      "minAgeDays": 30,
+      "maxItems": 200,
+      "maxDepth": 12
     },
     {
       "kind": "files",

@@ -835,6 +835,14 @@ catch-all; it never deletes something another rule meant to keep.
 after the pattern's fixed prefix (an iOS backup uses its Info.plist device name
 instead), so one backup or one emulator image can be picked on its own.
 
+<a id="min-age-paths"></a>
+`minAgeDays` on a path rule keeps a match only when `is_stale` finds nothing in
+it — the path itself or any entry below — modified within that many days. A
+folder's own mtime changes only when a direct child is added or removed, so a
+worktree edited three levels down would look old by it; `find -mtime -N -quit`
+stops at the first recent entry, so a busy folder costs one hit. An unreadable
+folder finds nothing and reads as stale; `is_safe_target` still gates the delete.
+
 <a id="user-files"></a>
 ## The user's own files (kind "files", method "trashfile")
 
@@ -874,6 +882,26 @@ pruned like any empty category.
 
 These rows sort after everything else (`sort_by_size` groups them), so the menu
 reads as caches first and "your files" as their own section at the bottom.
+
+Two rules use this kind: "Old file" (50 MB+, unused for 30+ days) runs first,
+then "Large file" (100 MB+, any age). A file the first one claimed is skipped by
+the second (`uf_taken`), so each file has one row, labelled by why it is there.
+
+<a id="hidden-map"></a>
+## The hidden-folder map
+
+macOS Settings counts every file in the home folder as "Documents", and on a
+developer's Mac most of that sits in top-level dot-folders — a container VM disk,
+worktrees, test output, toolchains — which the large-file scan deliberately
+skips. `scan_hidden_map` sizes each top-level hidden folder (concurrently, in the
+background during the scan; `compute_sizes`' `wait` collects it) and
+`print_hidden_map` lists those of 1 GB or more after the scan headline and on
+`m` in the menu, tagging the ones a menu row reaches into.
+
+It is a report, not a category: nothing in it can be selected or deleted. What
+inside a VM disk or a tool's home is safe to drop is specific to that tool, so it
+belongs in a rule that names it (as `~/.maestro/tests` and `~/.konan` do), not in
+a blanket "delete old things in dot-folders".
 
 <a id="tool-cleanup"></a>
 ## Tool-managed cleanup (simulators, Homebrew)

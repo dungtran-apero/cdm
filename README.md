@@ -43,9 +43,11 @@ Make sure `~/.local/bin` is on your `PATH` (`export PATH="$HOME/.local/bin:$PATH
 
 **5. Orphaned app data** — Application Support, Caches and Preferences belonging to apps that are no longer installed.
 
-**6. Deep clean (all opt-in)** — every other folder in `~/Library/Caches` and `~/Library/Logs` that no specific rule names (Apple's own skipped, nothing counted twice), saved window state, Mail's attachment cache, iPhone/iPad backups (one row per device, to the Trash), `.ipsw` firmware, simulators whose runtime is gone (`xcrun simctl delete unavailable`), Android system images and AVDs (one row each), Homebrew's old versions (`brew cleanup --prune=all`).
+**6. Deep clean (all opt-in)** — every other folder in `~/Library/Caches` and `~/Library/Logs` that no specific rule names (Apple's own skipped, nothing counted twice), saved window state, Mail's attachment cache, iPhone/iPad backups (one row per device, to the Trash), `.ipsw` firmware, simulators whose runtime is gone (`xcrun simctl delete unavailable`), Android system images and AVDs (one row each), Kotlin/Native toolchains in `~/.konan` (one row each), Maestro test runs untouched for 30+ days, shein worktrees untouched for 30+ days (to the Trash), Homebrew's old versions (`brew cleanup --prune=all`).
 
-**7. Your large files** — every file of 100 MB+ anywhere in your home folder (except `~/Library`, `~/Applications` and hidden folders, which the cache rows cover), one row per file with its last-used date, listed as their own section at the bottom of the menu. Plus old `.dmg`/`.pkg`/`.iso` installers in Downloads. They are never pre-selected, `a`/`s`/`-y` never pick them, and a ticked file only ever goes to the Trash.
+**Hidden-folder map** — after the scan (and on `m` in the menu) cdm lists every top-level hidden folder in your home of 1 GB+ — the part of "Documents" in System Settings that no file list shows — tagged when a menu row reaches into it. It is shown only; nothing in it is deleted.
+
+**7. Your old and large files** — every file of 50 MB+ not opened or modified for 30+ days, and every file of 100 MB+ anywhere in your home folder (except `~/Library`, `~/Applications` and hidden folders, which the cache rows cover), one row per file with its last-used date, listed as their own section at the bottom of the menu. Plus old `.dmg`/`.pkg`/`.iso` installers in Downloads. They are never pre-selected, `a`/`s`/`-y` never pick them, and a ticked file only ever goes to the Trash.
 
 ## Safety
 
