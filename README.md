@@ -1,6 +1,6 @@
 # cdm
 
-`cdm` is a terminal UI that deep-cleans your Mac: dev caches, build artifacts, leftover app data, device backups, dead simulators — and the large files you have not opened in months. It shows you exactly what and how big, and deletes only what you tick.
+`cdm` is a terminal UI that deep-cleans your Mac: dev caches, build artifacts, leftover app data, device backups, dead simulators — and every large file in your home folder. It shows you exactly what and how big, and deletes only what you tick.
 
 macOS only. Pure bash, no dependencies. Zero telemetry — the only network call `cdm` ever makes is fetching its own rule JSON.
 
@@ -45,7 +45,7 @@ Make sure `~/.local/bin` is on your `PATH` (`export PATH="$HOME/.local/bin:$PATH
 
 **6. Deep clean (all opt-in)** — every other folder in `~/Library/Caches` and `~/Library/Logs` that no specific rule names (Apple's own skipped, nothing counted twice), saved window state, Mail's attachment cache, iPhone/iPad backups (one row per device, to the Trash), `.ipsw` firmware, simulators whose runtime is gone (`xcrun simctl delete unavailable`), Android system images and AVDs (one row each), Homebrew's old versions (`brew cleanup --prune=all`).
 
-**7. Your large, long-unused files** — files of 200 MB+ in `~/Downloads`, `~/Desktop`, `~/Documents` and `~/Movies` not opened or changed in 90+ days, one row per file with its last-used date, listed as their own section at the bottom of the menu. Plus old `.dmg`/`.pkg`/`.iso` installers in Downloads. They are never pre-selected, `a`/`s`/`-y` never pick them, and a ticked file only ever goes to the Trash.
+**7. Your large files** — every file of 100 MB+ anywhere in your home folder (except `~/Library`, `~/Applications` and hidden folders, which the cache rows cover), one row per file with its last-used date, listed as their own section at the bottom of the menu. Plus old `.dmg`/`.pkg`/`.iso` installers in Downloads. They are never pre-selected, `a`/`s`/`-y` never pick them, and a ticked file only ever goes to the Trash.
 
 ## Safety
 
@@ -53,7 +53,7 @@ Make sure `~/.local/bin` is on your `PATH` (`export PATH="$HOME/.local/bin:$PATH
 - **Caches are deleted permanently** — they regenerate on the next build.
 - **Orphaned app data and git-ignored files go to the Trash**, so they are recoverable.
 - **Never touched regardless of what the rules say:** `~/Documents`, `~/Desktop`, `~/Downloads`, `~/Pictures`, `~/.ssh`, and iCloud Drive. This guard sits below the rule engine — a rule cannot opt out of it.
-- **Your own files are opt-in, one by one, and recoverable.** The large-file rows have their own, stricter gate: a regular file (never a folder, never a symlink) physically inside Downloads/Desktop/Documents/Movies, not in iCloud Drive, not inside a git repo or a package (Photos library, VM, Final Cut bundle, ...). The only action is moving it to the Trash.
+- **Your own files are opt-in, one by one, and recoverable.** The large-file rows have their own, stricter gate: a regular file (never a folder, never a symlink) physically inside your home folder (outside Library, Applications and hidden folders), not in iCloud Drive, not inside a git repo or a package (Photos library, VM, Final Cut bundle, ...). The only action is moving it to the Trash.
 - **A folder is only project junk if your repo git-ignores it.** Matching a name like `dist`, `build` or `Pods` is not enough — cdm verifies with git that the directory is ignored *and* untracked, so a tracked `build/` of release scripts or a committed `dist/` is left alone.
 - **`.env*` files are never offered for deletion.** The project scan skips them even though they're git-ignored — they hold secrets and local config nothing regenerates.
 - **App sandboxes and Apple/system-owned data are never touched.**
@@ -103,7 +103,7 @@ Optional keys added for deep clean:
 | `perItem: true` | One menu row per matched path instead of one per category |
 | `rest: true` | Catch-all: skip every path another rule already names |
 | `exclude: [globs]` | Basename globs to leave out |
-| `kind: "files"` | Your own files: `roots` (only inside Downloads/Desktop/Documents/Movies), optional `names`, `minSizeMB`, `minAgeDays`, `maxItems`, `maxDepth`, `prune`, `perItem`. Always Trash, never pre-selected |
+| `kind: "files"` | Your own files: `roots` (inside `~`, never Library/Applications/OrbStack or hidden folders), optional `names`, `minSizeMB`, `minAgeDays`, `maxItems`, `maxDepth`, `prune`, `perItem`. Always Trash, never pre-selected |
 | `kind: "simulators"` / `"brew"` | Row for `xcrun simctl delete unavailable` / `brew cleanup --prune=all` |
 
 ## Options

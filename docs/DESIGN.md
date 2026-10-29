@@ -28,7 +28,7 @@ What it does:
   4. Deep clean, all opt-in: every other user cache/log, saved window state,
      iPhone backups and firmware, dead simulators, Android images/AVDs,
      Homebrew's old versions.
-  5. Lists large, long-unused files in Downloads/Desktop/Documents/Movies, one
+  5. Lists large files anywhere in $HOME (outside Library and hidden folders), one
      row per file with its last-used date, for the user to pick one by one.
 
 Everything it can clean is described by JSON "rule" files (see the rules/
@@ -839,18 +839,22 @@ instead), so one backup or one emulator image can be picked on its own.
 ## The user's own files (kind "files", method "trashfile")
 
 `is_safe_target` refuses Downloads, Desktop, Documents and Movies outright, and
-that does not change. Large, long-unused files there are offered through a
-separate path with its own, narrower gate, `is_safe_user_file`:
+that does not change. The user's large files anywhere in `$HOME` are offered
+through a separate path with its own, narrower gate, `is_safe_user_file`:
 
 - **One outcome.** Method `trashfile` exists only for these rows and only ever
   calls `move_to_trash`. The JSON `method` of a `files` rule is ignored; the
   script decides.
 - **Regular files only**, never a directory, never a symlink — so a link inside
   Downloads cannot point the Trash at something elsewhere.
-- **Fixed roots.** `USER_FILE_ROOTS` is hard-coded. A rule's `roots` outside that
-  set are skipped, so an edited rules file can narrow the scan but not widen it.
-  Pictures and Music are deliberately absent: their libraries are packages whose
-  insides look like loose large files.
+- **All of `$HOME`, minus a fixed set.** `USER_FILE_HOME_EXCLUDE` (`Library`,
+  `Applications`, `OrbStack`) and every hidden top-level folder are hard-coded
+  out; a rule's `roots` there are skipped, so an edited rules file can narrow the
+  scan but not widen it. `Library` and dot-folders are app and tool state the
+  cache rules already own; OrbStack is a network view of a VM. Hidden folders at
+  any depth are pruned too. Pictures and Music are scanned: their libraries are
+  packages, pruned by name below, so only loose files there are offered.
+  A file directly in `$HOME` (a JVM heap dump, say) counts; a hidden one never.
 - **Physical containment** like is_safe_target, plus an explicit refusal of
   anything that resolves into iCloud Drive (`~/Library/Mobile Documents`).
 - **Never inside a project or a package.** find prunes `.git`, `node_modules`,

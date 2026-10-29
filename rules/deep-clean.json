@@ -118,14 +118,14 @@
     {
       "kind": "files",
       "icon": "🗃️",
-      "name": "Large old file",
+      "name": "Large file",
       "perItem": true,
-      "desc": "Your file — not opened or changed in 90+ days:",
-      "roots": ["~/Downloads", "~/Desktop", "~/Documents", "~/Movies"],
-      "minSizeMB": 200,
-      "minAgeDays": 90,
-      "maxItems": 60,
-      "maxDepth": 10
+      "desc": "Your file (100 MB+):",
+      "roots": ["~"],
+      "minSizeMB": 100,
+      "minAgeDays": 0,
+      "maxItems": 200,
+      "maxDepth": 12
     }
   ]
 }
